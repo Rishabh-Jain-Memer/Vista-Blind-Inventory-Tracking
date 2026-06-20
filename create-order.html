@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New Order - Vista Manufacturing</title>
+  <script>
+    if (new URLSearchParams(location.search).get('embed') === '1') {
+      document.documentElement.classList.add('embed-mode')
+    }
+  </script>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+  <!-- Create order page: form markup for js/create-order.js; can run standalone or inside the Create tab embed. -->
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="loading-center" id="loading"><div class="spinner spinner-lg"></div></div>
+    <div id="content" class="d-none workspace-shell" style="max-width:980px;margin:0 auto;">
+      <a href="create.html?tab=order" class="back-link"><i class="fa-solid fa-arrow-left"></i> Back to Create</a>
+
+      <div class="page-header workspace-hero" style="margin-bottom:1.5rem">
+        <div>
+          <h1>Create Order</h1>
+          <p>Select customer, choose blind type or raw material, and build the order items.</p>
+        </div>
+        <button class="btn btn-secondary" id="order-master-btn" onclick="openOrderStockMasterModal()">
+          <i class="fa-solid fa-layer-group"></i> Create Stock Master
+        </button>
+      </div>
+
+      <div class="card mb-4" style="margin-bottom:1rem;">
+        <div class="card-header">
+          <div>
+            <h2>1. Customer</h2>
+            <span class="text-muted text-sm">Select an existing customer or create one inline.</span>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-secondary btn-sm" id="cust-search-btn" onclick="toggleNewCustomer(false)" style="display:none;">
+              Search Existing
+            </button>
+            <button class="btn btn-primary btn-sm" id="cust-new-btn" onclick="toggleNewCustomer(true)">
+              <i class="fa-solid fa-plus"></i> New Customer
+            </button>
+          </div>
+        </div>
+
+        <div id="cust-search-section" style="padding:16px;">
+          <div id="cust-select-wrap">
+            <select id="cust-select" onchange="selectCustomerById(this.value)" style="width:100%;font-size:14px;">
+              <option value="">Select a customer...</option>
+            </select>
+          </div>
+
+          <div id="cust-selected"
+               style="margin-top:10px;display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;">
+            <div style="display:flex;justify-content:space-between;align-items:start;">
+              <div>
+                <div class="fw-600" id="cust-sel-name"></div>
+                <div class="text-xs text-muted" id="cust-sel-details"></div>
+              </div>
+              <button class="btn btn-ghost btn-sm" onclick="clearCustomer()" style="color:#6b7280;">
+                <i class="fa-solid fa-times"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="cust-new-section" style="padding:16px;display:none;">
+          <div class="form-row cols-2">
+            <div class="form-group">
+              <label>Full Name <span style="color:#ef4444">*</span></label>
+              <input id="nc-name" placeholder="e.g. Ramesh Gupta">
+            </div>
+            <div class="form-group">
+              <label>Phone</label>
+              <input id="nc-phone" placeholder="+91 98765 43210" type="tel">
+            </div>
+          </div>
+          <div class="form-row cols-2">
+            <div class="form-group">
+              <label>Phone 2</label>
+              <input id="nc-phone2" placeholder="Alternate number" type="tel">
+            </div>
+            <div class="form-group">
+              <label>Email</label>
+              <input id="nc-email" type="email" placeholder="optional@email.com">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Address</label>
+            <input id="nc-address" placeholder="Street address">
+          </div>
+          <div class="form-row cols-3">
+            <div class="form-group">
+              <label>City</label>
+              <input id="nc-city" placeholder="e.g. Jaipur">
+            </div>
+            <div class="form-group">
+              <label>State</label>
+              <input id="nc-state" placeholder="e.g. Rajasthan">
+            </div>
+            <div class="form-group">
+              <label>GSTIN</label>
+              <input id="nc-gstin" placeholder="GST number (if any)" style="text-transform:uppercase;">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-4" style="margin-bottom:1rem;">
+        <div class="card-header">
+          <div>
+            <h2>2. Order Details</h2>
+            <span class="text-muted text-sm">Reference details shared by all order items.</span>
+          </div>
+        </div>
+        <div style="padding:16px;">
+          <div class="form-row cols-2">
+            <div class="form-group" style="margin:0">
+              <label>Order Reference / Notes</label>
+              <input id="order-notes" placeholder="e.g. Living room blinds, urgent">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label>Order Date</label>
+              <input id="order-date" type="date" value="">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-header">
+          <div>
+            <h2>3. Quote / Proforma Invoice</h2>
+            <span class="text-muted text-sm">Customer-facing quote details saved with this order.</span>
+          </div>
+        </div>
+        <div style="padding:16px;">
+          <div class="form-row cols-2">
+            <div class="form-group">
+              <label>PI / Quote No.</label>
+              <input id="quote-no" placeholder="Auto-filled after order number if blank">
+            </div>
+            <div class="form-group">
+              <label>Quote Date</label>
+              <input id="quote-date" type="date">
+            </div>
+          </div>
+          <div class="form-row cols-2">
+            <div class="form-group">
+              <label>Billing Address</label>
+              <textarea id="quote-billing-address" rows="5" placeholder="Customer billing name, address, GSTIN"></textarea>
+            </div>
+            <div class="form-group">
+              <label>Delivery Address</label>
+              <textarea id="quote-delivery-address" rows="5" placeholder="Delivery address shown on quote"></textarea>
+            </div>
+          </div>
+          <div class="form-row cols-2">
+            <div class="form-group">
+              <label>Opening Line 1</label>
+              <input id="quote-intro-1" value="We thank you for the kind courtesies extended by your good selves and the interest shown in the VISTA products.">
+            </div>
+            <div class="form-group">
+              <label>Opening Line 2</label>
+              <input id="quote-intro-2" value="With reference to above subject, we are pleased to offer our best possible quote and other terms & conditions">
+            </div>
+          </div>
+          <div class="form-row cols-2">
+            <div>
+              <div class="fw-600" style="font-size:13px;margin-bottom:8px;">Terms</div>
+              <div class="form-group"><label>Payment 1</label><input id="quote-term-payment-1" value="50% Advance"></div>
+              <div class="form-group"><label>Payment 2</label><input id="quote-term-payment-2" value="Balance 50% within 7 days after installation"></div>
+              <div class="form-group"><label>Installation</label><input id="quote-term-installation" value="Final measurements & Installation done by our Technician."></div>
+              <div class="form-group"><label>Delivery</label><input id="quote-term-delivery" value="7 to 8 days from the date of order processed with confirm PO"></div>
+            </div>
+            <div>
+              <div class="fw-600" style="font-size:13px;margin-bottom:8px;">Tax & Bank</div>
+              <div class="form-row cols-2">
+                <div class="form-group"><label>CGST %</label><input id="quote-cgst-rate" type="number" min="0" step="0.01" value="9"></div>
+                <div class="form-group"><label>SGST %</label><input id="quote-sgst-rate" type="number" min="0" step="0.01" value="9"></div>
+              </div>
+              <div class="form-group"><label>A/c. Name</label><input id="quote-bank-account-name" value="Timbervision LLP"></div>
+              <div class="form-group"><label>Bank Name</label><input id="quote-bank-name" value="HDFC Bank"></div>
+              <div class="form-group"><label>Branch</label><input id="quote-bank-branch" value="New Panvel East"></div>
+              <div class="form-row cols-2">
+                <div class="form-group"><label>A/c No.</label><input id="quote-bank-account-no" value="50200111292252"></div>
+                <div class="form-group"><label>IFSC</label><input id="quote-bank-ifsc" value="HDFC0000256"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-header">
+          <div>
+            <h2>4. Items</h2>
+            <span class="text-muted text-sm">Add every blind, raw material, track, or direct order item here.</span>
+          </div>
+        </div>
+        <div style="padding:16px;">
+          <div id="items-container"></div>
+
+          <div style="margin-bottom:1rem;">
+            <button class="btn btn-accent-soft" onclick="addItem()">
+              <i class="fa-solid fa-plus"></i> Add Item
+            </button>
+          </div>
+
+          <div id="order-alert" class="alert alert-error" style="margin-bottom:1rem;"></div>
+
+          <div class="total-bar" id="order-total-bar">
+            <div>
+              <div class="total-label">Grand Total</div>
+              <div class="total-value" id="grand-total">&#8377;0.00</div>
+            </div>
+            <button class="btn btn-primary" id="submit-btn" onclick="submitOrder()" style="padding:12px 32px;font-size:16px;">
+              <i class="fa-solid fa-check"></i> Submit Order
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-header">
+      <h3 id="modal-title">Modal</h3>
+      <button class="modal-close" onclick="closeModal()">x</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/customer-source.js"></script>
+<script src="js/inventory-source.js"></script>
+<script src="js/transitions.js"></script>
+<script src="js/sidebar.js"></script>
+<script src="js/create-order.js"></script>
+</body>
+</html>

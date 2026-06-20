@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create - Vista Manufacturing</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+  <!-- Create page: the single entry point for inward stock and confirmed customer orders. -->
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="loading-center" id="loading"><div class="spinner spinner-lg"></div></div>
+    <div id="content" class="d-none workspace-shell">
+      <div class="page-header workspace-hero">
+        <div>
+          <h1>Create</h1>
+          <p>Create supplier stock orders or confirmed customer sales orders.</p>
+        </div>
+      </div>
+
+      <div class="tab-strip" style="margin-bottom:1.5rem;">
+        <button class="page-tab-btn active" id="tab-btn-stock" onclick="switchCreateTab('stock')">
+          <i class="fa-solid fa-file-signature"></i> Create Purchase Order
+        </button>
+        <button class="page-tab-btn" id="tab-btn-order" onclick="switchCreateTab('order')">
+          <i class="fa-solid fa-cart-plus"></i> Create Sales Order
+        </button>
+      </div>
+
+      <section id="tab-stock">
+        <div id="stock-alert" class="alert alert-error"></div>
+
+        <div class="section-intro">
+          <div class="section-intro-icon accent-stock"><i class="fa-solid fa-box-open"></i></div>
+          <div>
+            <h2>Create Purchase Order</h2>
+            <p>Create supplier stock orders first. Inventory is updated only after the stock order is received.</p>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-header">
+            <div>
+              <h2>Stock Masters</h2>
+              <span class="text-muted text-sm">Create category-only masters or blank stock variants without invoice quantity.</span>
+            </div>
+          </div>
+          <div style="padding:16px;">
+            <div class="form-row cols-3" style="margin-bottom:12px;">
+              <div class="form-group">
+                <label>Item Type *</label>
+                <select id="master-type" onchange="renderMasterCategoryOptions()">
+                  <option value="Fabric">Fabric</option>
+                  <option value="Parts">Parts / Hardware</option>
+                  <option value="FG">Finished Goods</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Category *</label>
+                <input id="master-category" list="master-category-list" placeholder="Existing or new category">
+                <datalist id="master-category-list"></datalist>
+              </div>
+              <div class="form-group">
+                <label>Stock / Product Name</label>
+                <input id="master-product" placeholder="e.g. Classic Screen 5%">
+              </div>
+            </div>
+            <div class="form-row cols-4">
+              <div class="form-group"><label>Variant Name</label><input id="master-variant" placeholder="Blank = same as stock name"></div>
+              <div class="form-group">
+                <label>Unit</label>
+                <select id="master-unit">
+                  <option value="m">m</option>
+                  <option value="sqm">sqm</option>
+                  <option value="pcs">pcs</option>
+                  <option value="ft">ft</option>
+                  <option value="set">set</option>
+                  <option value="nos">nos</option>
+                </select>
+              </div>
+              <div class="form-group"><label>Width (m)</label><input id="master-width" type="number" step="0.01" min="0" placeholder="Optional"></div>
+              <div class="form-group"><label>Purchase Rate</label><input id="master-rate" type="number" step="0.01" min="0" placeholder="Optional"></div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+              <button class="btn btn-secondary" id="save-master-btn" onclick="saveStockMaster()">
+                <i class="fa-solid fa-layer-group"></i> Create Master
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-header">
+            <div>
+              <h2>1. Supplier</h2>
+              <span class="text-muted text-sm">Select an existing supplier or create one while entering the bill.</span>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-secondary btn-sm" id="supplier-search-btn" style="display:none;" onclick="toggleNewSupplier(false)">
+                Search Existing
+              </button>
+              <button class="btn btn-primary btn-sm" id="supplier-new-btn" onclick="toggleNewSupplier(true)">
+                <i class="fa-solid fa-plus"></i> New Supplier
+              </button>
+            </div>
+          </div>
+
+          <div id="supplier-search-section" style="padding:16px;">
+            <div id="supplier-select-wrap" style="position:relative;">
+              <div id="supplier-placeholder"
+                   onclick="toggleSupplierDropdown()"
+                   style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:#fff;cursor:pointer;color:#64748b;">
+                <span>Search supplier by name, phone or city...</span>
+                <i class="fa-solid fa-chevron-down text-muted"></i>
+              </div>
+              <div id="supplier-selected"
+                   style="display:none;margin-top:8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                  <div>
+                    <div class="fw-600" id="supplier-sel-name"></div>
+                    <div class="text-xs text-muted" id="supplier-sel-details"></div>
+                  </div>
+                  <button class="btn btn-ghost btn-sm" onclick="clearSupplier()" style="color:#64748b;">Change</button>
+                </div>
+              </div>
+              <div id="supplier-dropdown"
+                   style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 10px 25px rgba(15,23,42,.12);z-index:80;">
+                <div style="padding:10px 12px;border-bottom:1px solid var(--border);">
+                  <input id="supplier-search-input" placeholder="Search supplier..."
+                         oninput="renderSupplierList(this.value)"
+                         autocomplete="off"
+                         style="width:100%;border:none;outline:none;background:transparent;font-size:14px;">
+                </div>
+                <div id="supplier-list" style="max-height:240px;overflow-y:auto;"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="supplier-new-section" style="display:none;padding:16px;border-top:1px solid var(--border);">
+            <div class="form-row cols-2">
+              <div class="form-group"><label>Supplier Name *</label><input id="ns-name" placeholder="Supplier name"></div>
+              <div class="form-group"><label>Contact Person</label><input id="ns-contact-person" placeholder="Optional"></div>
+            </div>
+            <div class="form-row cols-2">
+              <div class="form-group"><label>Phone</label><input id="ns-phone" placeholder="Optional"></div>
+              <div class="form-group"><label>Alternate Phone</label><input id="ns-phone2" placeholder="Optional"></div>
+            </div>
+            <div class="form-row cols-2">
+              <div class="form-group"><label>Email</label><input id="ns-email" type="email" placeholder="Optional"></div>
+              <div class="form-group"><label>GSTIN</label><input id="ns-gstin" placeholder="Optional"></div>
+            </div>
+            <div class="form-group"><label>Address</label><input id="ns-address" placeholder="Optional"></div>
+            <div class="form-row cols-2">
+              <div class="form-group"><label>City</label><input id="ns-city" placeholder="Optional"></div>
+              <div class="form-group"><label>State</label><input id="ns-state" placeholder="Optional"></div>
+            </div>
+            <div class="form-group"><label>Notes</label><input id="ns-notes" placeholder="Optional"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-header">
+            <div>
+              <h2>2. Bill Details</h2>
+              <span class="text-muted text-sm">These details are shared by the stock order and its items.</span>
+            </div>
+          </div>
+          <div style="padding:16px;">
+            <div class="form-row cols-2" style="margin-bottom:12px;">
+              <div class="form-group"><label>Bill Number *</label><input id="bill-no" placeholder="e.g. A2TR/25-26/3000"></div>
+              <div class="form-group"><label>Bill Date *</label><input id="bill-date" type="date"></div>
+            </div>
+            <div class="form-group" style="margin:0;"><label>Order Notes</label><input id="stock-notes" placeholder="Optional stock order note"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-header">
+            <div>
+              <h2>3. Stock Order Form</h2>
+              <span class="text-muted text-sm">These fields are printed into the downloadable supplier order form.</span>
+            </div>
+          </div>
+          <div style="padding:16px;">
+            <div class="form-row cols-3" style="margin-bottom:12px;">
+              <div class="form-group"><label>Party Order No.</label><input id="stock-party-order-no" placeholder="e.g. TV-PO-005/26-27"></div>
+              <div class="form-group"><label>Date of Dispatch</label><input id="stock-dispatch-date" placeholder="Immediate"></div>
+              <div class="form-group"><label>Mode of Despatch</label><input id="stock-mode-despatch" placeholder="By Courier"></div>
+            </div>
+            <div class="form-row cols-3" style="margin-bottom:12px;">
+              <div class="form-group"><label>GST No.</label><input id="stock-gst-no" placeholder="Customer GST number"></div>
+              <div class="form-group"><label>Contact Person</label><input id="stock-contact-person" placeholder="Contact person"></div>
+              <div class="form-group"><label>Telephone</label><input id="stock-tel" placeholder="Phone number"></div>
+            </div>
+            <div class="form-row cols-2" style="margin-bottom:12px;">
+              <div class="form-group">
+                <label>Invoice To</label>
+                <textarea id="stock-invoice-to" rows="4" placeholder="Billing address"></textarea>
+              </div>
+              <div class="form-group">
+                <label>Delivery Address</label>
+                <textarea id="stock-delivery-address" rows="4" placeholder="Delivery address"></textarea>
+              </div>
+            </div>
+            <div class="form-row cols-3" style="margin-bottom:12px;">
+              <div class="form-group"><label>Dealer / Ref.</label><input id="stock-dealer-ref" placeholder="Optional reference"></div>
+              <div class="form-group"><label>Order Type</label><input id="stock-order-type" placeholder="Project / Retail"></div>
+              <div class="form-group"><label>Freight</label><input id="stock-freight" placeholder="Inclusive / Extra"></div>
+            </div>
+            <div class="form-row cols-2" style="margin-bottom:12px;">
+              <div class="form-group"><label>Payment Terms</label><input id="stock-payment-terms" placeholder="e.g. 30 days credit"></div>
+              <div class="form-group"><label>Installation</label><input id="stock-installation" placeholder="Optional"></div>
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label>Special Instructions</label>
+              <textarea id="stock-special-instructions" rows="3" placeholder="Optional instructions printed below the item table"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2>4. Items</h2>
+              <span class="text-muted text-sm">Add every line item from the supplier stock order.</span>
+            </div>
+          </div>
+          <div style="padding:16px;">
+            <div id="stock-items"></div>
+            <div style="margin-bottom:16px;">
+              <button class="btn btn-accent-soft" onclick="addStockItem()">
+                <i class="fa-solid fa-plus"></i> Add Item
+              </button>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;border-top:1px solid var(--border);padding-top:16px;margin-top:8px;flex-wrap:wrap;">
+              <div class="text-sm text-muted" id="stock-summary">0 items ready</div>
+              <div style="display:flex;justify-content:flex-end;gap:8px;">
+                <button class="btn btn-secondary" onclick="resetStockForm()">Clear</button>
+                <button class="btn btn-primary" id="save-stock-btn" onclick="saveStock()">Create Stock Order</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-order" style="display:none;">
+        <iframe id="create-order-frame"
+                src="create-order.html?embed=1"
+                scrolling="no"
+                style="width:100%;height:720px;overflow:hidden;border:none;border-radius:12px;background:#f8fafc;"></iframe>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/transitions.js"></script>
+<script src="js/sidebar.js"></script>
+<script src="js/create.js"></script>
+</body>
+</html>

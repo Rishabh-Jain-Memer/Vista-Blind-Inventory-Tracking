@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports — Vista Manufacturing</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    /* ── Main tab bar ── */
+    .report-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      padding: 6px;
+      border: 1px solid rgba(99,102,241,.14);
+      background: linear-gradient(180deg, rgba(255,255,255,.95), rgba(244,247,255,.96));
+      border-radius: 16px;
+      box-shadow: 0 12px 28px rgba(15,23,42,.06);
+      width: fit-content;
+    }
+    .report-tab-btn {
+      padding: 10px 18px;
+      border: 1px solid transparent;
+      background: transparent;
+      font-size: 14px; font-weight: 600;
+      color: var(--text-muted); cursor: pointer;
+      border-radius: 12px;
+      transition: color .15s, border-color .15s, background .15s, box-shadow .15s, transform .12s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .report-tab-btn.active {
+      color: var(--accent);
+      background: linear-gradient(135deg, rgba(79,70,229,.14), rgba(37,99,235,.08));
+      border-color: rgba(79,70,229,.18);
+      box-shadow: 0 8px 18px rgba(79,70,229,.12);
+    }
+    .report-tab-btn:hover:not(.active) { color: var(--text); background: rgba(255,255,255,.8); }
+
+    .report-pane { display: none; }
+    .report-pane.active { display: block; }
+
+    /* ── Filter bar ── */
+    .filter-bar {
+      display: flex; flex-wrap: wrap; gap: 10px;
+      align-items: flex-end; margin-bottom: 20px;
+    }
+    .filter-group { display: flex; flex-direction: column; gap: 4px; }
+    .filter-group label {
+      font-size: 11px; font-weight: 600; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: .04em;
+    }
+    .filter-group select,
+    .filter-group input[type=date] {
+      height: 36px; padding: 0 10px;
+      border: 1px solid var(--border); border-radius: 6px;
+      font-size: 13px; background: #fff; color: var(--text);
+    }
+
+    /* ── Breadcrumb nav ── */
+    .drill-breadcrumb {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; margin-bottom: 20px; flex-wrap: wrap;
+      background: #f8fafc; border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px;
+    }
+    .drill-breadcrumb .crumb { color: var(--accent); cursor: pointer; font-weight: 600; }
+    .drill-breadcrumb .crumb:hover { text-decoration: underline; }
+    .drill-breadcrumb .crumb.current { color: var(--text); cursor: default; }
+    .drill-breadcrumb .sep { color: var(--text-muted); font-size: 16px; line-height: 1; }
+
+    /* ── Report summary bar ── */
+    .report-summary-bar {
+      display: flex; flex-wrap: wrap; gap: 0;
+      background: #fff; border: 1px solid var(--border);
+      border-radius: var(--radius); margin-bottom: 16px; overflow: hidden;
+    }
+    .rsb-item {
+      display: flex; flex-direction: column; gap: 3px;
+      padding: 14px 20px; border-right: 1px solid var(--border); flex: 1; min-width: 120px;
+    }
+    .rsb-item:last-child { border-right: none; }
+    .rsb-item.rsb-accent { background: #f0f4ff; }
+    .rsb-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+    .rsb-value { font-size: 15px; font-weight: 700; color: var(--text); }
+    .rsb-accent .rsb-value { color: var(--accent); font-size: 17px; }
+
+    /* ── KPI strip ── */
+    .kpi-strip {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px; margin-bottom: 20px;
+    }
+    .kpi-card {
+      background: #fff; border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px 18px;
+      border-left: 3px solid var(--accent);
+    }
+    .kpi-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin-bottom: 6px; }
+    .kpi-value { font-size: 20px; font-weight: 800; color: var(--text); }
+    .kpi-sub   { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+
+    /* ── Outward section title ── */
+    .section-title {
+      font-size: 11px; font-weight: 700; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: .06em;
+      padding: 0 0 8px; border-bottom: 1px solid var(--border);
+      margin: 24px 0 14px;
+    }
+    .section-title:first-child { margin-top: 0; }
+
+    /* ── Table refinements ── */
+    .totals-row td {
+      font-weight: 700; border-top: 2px solid var(--border) !important;
+      background: #f8fafc;
+    }
+    .drill-row:hover td { background: #f5f7ff; }
+    tr.month-has-data td:first-child { border-left: 3px solid var(--accent); padding-left: 13px; }
+
+    @media (max-width: 640px) {
+      .report-tab-btn { padding: 10px 16px; font-size: 13px; }
+      .kpi-strip { grid-template-columns: 1fr 1fr; }
+      .rsb-item { padding: 10px 12px; min-width: 100px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Reports page: inward/outward accounting drilldowns rendered from js/reports.js. -->
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="loading-center" id="loading"><div class="spinner spinner-lg"></div></div>
+    <div id="content" class="d-none workspace-shell">
+
+      <div class="page-header workspace-hero">
+        <div><h1>Reports</h1><p id="report-subtitle">Inward stock and outward order summaries</p></div>
+        <button class="btn btn-ghost btn-sm" id="export-btn" onclick="exportCurrentTab()">
+          <i class="fa-solid fa-file-excel"></i> Export
+        </button>
+      </div>
+
+      <!-- Main tab bar -->
+      <div class="report-tabs">
+        <button class="report-tab-btn active" id="tab-inward-btn" onclick="switchTab('inward')">
+          <i class="fa-solid fa-arrow-down-to-line"></i> Inward
+        </button>
+        <button class="report-tab-btn" id="tab-outward-btn" onclick="switchTab('outward')">
+          <i class="fa-solid fa-arrow-up-from-line"></i> Outward
+        </button>
+      </div>
+
+      <!-- ═══════════════ INWARD PANE ═══════════════ -->
+      <div class="report-pane active" id="pane-inward">
+
+        <!-- Year filter + category -->
+        <div class="filter-bar">
+          <div class="filter-group">
+            <label>Year</label>
+            <select id="iw-year" onchange="iwSelectYear()"></select>
+          </div>
+          <div class="filter-group">
+            <label>Category</label>
+            <select id="iw-cat" onchange="iwApplySecondaryFilter()">
+              <option value="">All Categories</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>Supplier</label>
+            <select id="iw-supplier" onchange="iwApplySecondaryFilter()">
+              <option value="">All Suppliers</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Breadcrumb -->
+        <div class="drill-breadcrumb" id="iw-breadcrumb"></div>
+
+        <!-- Drill content area -->
+        <div id="iw-drill-content">
+          <div class="empty-state">Select a year to begin</div>
+        </div>
+
+      </div>
+
+      <!-- ═══════════════ OUTWARD PANE ═══════════════ -->
+      <div class="report-pane" id="pane-outward">
+        <div class="filter-bar">
+          <div class="filter-group">
+            <label>Year</label>
+            <select id="ow-year" onchange="applyOutwardFilters()"></select>
+          </div>
+          <div class="filter-group">
+            <label>Month</label>
+            <select id="ow-month" onchange="applyOutwardFilters()">
+              <option value="">All Months</option>
+              <option value="1">January</option><option value="2">February</option>
+              <option value="3">March</option><option value="4">April</option>
+              <option value="5">May</option><option value="6">June</option>
+              <option value="7">July</option><option value="8">August</option>
+              <option value="9">September</option><option value="10">October</option>
+              <option value="11">November</option><option value="12">December</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>From Date</label>
+            <input type="date" id="ow-from" onchange="applyOutwardFilters()">
+          </div>
+          <div class="filter-group">
+            <label>To Date</label>
+            <input type="date" id="ow-to" onchange="applyOutwardFilters()">
+          </div>
+          <div class="filter-group">
+            <label>Status</label>
+            <select id="ow-status" onchange="applyOutwardFilters()">
+              <option value="completed">Completed</option>
+            </select>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="clearOutwardFilters()" style="align-self:flex-end;">
+            <i class="fa-solid fa-xmark"></i> Clear
+          </button>
+        </div>
+
+        <div class="kpi-strip">
+          <div class="kpi-card">
+            <div class="kpi-label">Total Orders</div>
+            <div class="kpi-value" id="ow-kpi-orders">—</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Order Value (Billed)</div>
+            <div class="kpi-value" id="ow-kpi-revenue">—</div>
+            <div class="kpi-sub">Completed orders only</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Raw Material Cost</div>
+            <div class="kpi-value" id="ow-kpi-rmcost">—</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Net Profit</div>
+            <div class="kpi-value" id="ow-kpi-profit">—</div>
+            <div class="kpi-sub">Billed − Material Cost</div>
+          </div>
+        </div>
+
+        <div class="section-title">Orders Summary</div>
+        <div class="card" style="margin-bottom:20px;">
+          <div class="card-header">
+            <h2>Orders</h2>
+            <span id="ow-orders-count" class="text-muted text-sm"></span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Order ID</th><th>Invoice No.</th><th>Date</th><th>Customer</th><th>Status</th>
+                <th class="tr">Order Value</th><th class="tr">Cost</th><th class="tr">Profit</th>
+              </tr></thead>
+<tbody id="ow-orders-tbody"><tr><td colspan="8" class="empty-state">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="section-title">Raw Materials Outward</div>
+        <div class="card">
+          <div class="card-header">
+            <h2>Material Consumption</h2>
+            <span id="ow-rm-count" class="text-muted text-sm"></span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Variant / Material</th><th>Category</th>
+                <th class="tr">Qty Used</th><th class="tr">Rate</th>
+                <th class="tr">Total Cost</th><th>Orders</th>
+              </tr></thead>
+              <tbody id="ow-rm-tbody"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div><!-- /pane-outward -->
+
+    </div><!-- /content -->
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/excel-export.js"></script>
+<script src="js/transitions.js"></script>
+<script src="js/sidebar.js"></script>
+<script src="js/reports.js"></script>
+</body>
+</html>

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Profiles - Vista Manufacturing</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+  <!-- Profiles page: employees, customers, and suppliers are controlled by js/settings.js. -->
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="loading-center" id="loading"><div class="spinner spinner-lg"></div></div>
+    <div id="content" class="d-none">
+
+      <div class="page-header">
+        <div>
+          <h1>Profiles</h1>
+          <p>Employees, customers, and suppliers connected to orders, reports, and inventory.</p>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:1.5rem;">
+        <button class="page-tab-btn active" id="tab-btn-employees" onclick="switchTab('employees')">
+          <i class="fa-solid fa-users"></i> Employees
+        </button>
+        <button class="page-tab-btn" id="tab-btn-customers" onclick="switchTab('customers')">
+          <i class="fa-solid fa-address-book"></i> Customers
+        </button>
+        <button class="page-tab-btn" id="tab-btn-suppliers" onclick="switchTab('suppliers')">
+          <i class="fa-solid fa-truck-field"></i> Suppliers
+        </button>
+      </div>
+
+      <div id="tab-employees">
+        <div class="profile-toolbar">
+          <div>
+            <div class="profile-toolbar-title" id="employee-count"></div>
+            <div class="profile-toolbar-subtitle">Manage team access and activity history.</div>
+          </div>
+          <div class="profile-toolbar-actions">
+            <button class="btn btn-primary btn-sm" onclick="openAddUserModal()">
+              <i class="fa-solid fa-plus"></i> Add Employee
+            </button>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px;" id="roles-access-card">
+          <div class="card-header" style="padding:12px 16px;">
+            <span class="fw-600" style="font-size:13px;">Roles & Access</span>
+          </div>
+          <div style="padding:12px 16px;display:flex;gap:20px;flex-wrap:wrap;font-size:13px;">
+            <div><span class="badge badge-admin" style="margin-right:6px;">admin</span>Full access</div>
+            <div><span class="badge badge-executer" style="margin-right:6px;">executer</span>Production queue only</div>
+            <div><span class="badge badge-sales" style="margin-right:6px;">sales</span>Orders and customers</div>
+          </div>
+        </div>
+
+        <div class="card" id="employees-list">
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Activity</th>
+                <th>Joined</th>
+                <th style="text-align:right;">Actions</th>
+              </tr></thead>
+              <tbody id="employees-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div id="employee-detail" style="display:none;"></div>
+      </div>
+
+      <div id="tab-customers" style="display:none;">
+        <div class="profile-toolbar">
+          <div>
+            <div class="profile-toolbar-title" id="cust-count"></div>
+            <div class="profile-toolbar-subtitle">Track customer details and order history.</div>
+          </div>
+          <div class="profile-toolbar-actions">
+            <input type="text" id="cust-search-input" placeholder="Search by name, phone, city..." class="filter-input" style="width:240px;" oninput="renderCustomers()">
+            <button class="btn btn-secondary btn-sm" onclick="exportCustomersExcel()">
+              <i class="fa-solid fa-file-excel"></i> Export
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="openAddCustomerModal()">
+              <i class="fa-solid fa-plus"></i> Add Customer
+            </button>
+          </div>
+        </div>
+
+        <div class="card" id="customers-list">
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>City / State</th>
+                <th>GSTIN</th>
+                <th>Orders</th>
+                <th class="tr">Order Value</th>
+                <th style="text-align:right;">Actions</th>
+              </tr></thead>
+              <tbody id="customers-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div id="customer-detail" style="display:none;"></div>
+      </div>
+
+      <div id="tab-suppliers" style="display:none;">
+        <div class="profile-toolbar">
+          <div>
+            <div class="profile-toolbar-title" id="supplier-count"></div>
+            <div class="profile-toolbar-subtitle">Maintain supplier profiles and purchase bill history.</div>
+          </div>
+          <div class="profile-toolbar-actions">
+            <input type="text" id="supplier-search-input" placeholder="Search suppliers..." class="filter-input" style="width:240px;" oninput="renderSuppliers()">
+            <button class="btn btn-secondary btn-sm" onclick="window.location.href='reports.html?tab=inward'">
+              <i class="fa-solid fa-chart-bar"></i> Reports
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="openAddSupplierModal()">
+              <i class="fa-solid fa-plus"></i> Add Supplier
+            </button>
+          </div>
+        </div>
+
+        <div class="card" id="suppliers-list">
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Supplier</th>
+                <th>Contact</th>
+                <th>GSTIN</th>
+                <th>Bills</th>
+                <th class="tr">Purchase Value</th>
+                <th style="text-align:right;">Actions</th>
+              </tr></thead>
+              <tbody id="suppliers-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div id="supplier-detail" style="display:none;"></div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-header">
+      <h3 id="modal-title">Modal</h3>
+      <button class="modal-close" onclick="closeModal()">x</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/excel-export.js"></script>
+<script src="js/customer-source.js"></script>
+<script src="js/transitions.js"></script>
+<script src="js/sidebar.js"></script>
+<script src="js/settings.js"></script>
+</body>
+</html>

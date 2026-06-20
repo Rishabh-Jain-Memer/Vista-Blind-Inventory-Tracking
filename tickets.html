@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tickets - Vista Manufacturing</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+  <!-- Tickets page: pre-order requirement capture before confirmed orders are created. -->
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="loading-center" id="loading"><div class="spinner spinner-lg"></div></div>
+    <div id="content" class="d-none workspace-shell">
+      <div class="page-header workspace-hero">
+        <div>
+          <h1>Tickets</h1>
+          <p>Capture customer requirements before the order is confirmed, then convert the ticket into a full order.</p>
+        </div>
+      </div>
+
+      <div class="section-intro">
+        <div class="section-intro-icon accent-ticket"><i class="fa-solid fa-ticket"></i></div>
+        <div>
+          <h2>Customer Requirements</h2>
+          <p>Create a ticket first when the customer is still discussing measurements, product choices, budget, or timing.</p>
+        </div>
+      </div>
+
+      <div id="ticket-alert" class="alert alert-error"></div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header">
+          <div>
+            <h2>New Ticket</h2>
+            <span class="text-muted text-sm">Select an existing customer profile or save the typed details as a new profile.</span>
+          </div>
+        </div>
+        <div style="padding:16px;">
+          <div class="form-row cols-2" style="margin-bottom:12px;">
+            <div class="form-group">
+              <label>Customer Profile</label>
+              <select id="ticket-customer-profile" onchange="selectTicketCustomerProfile(this.value)">
+                <option value="">New / typed profile</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Allocated To</label>
+              <select id="ticket-allocated-to">
+                <option value="">Unassigned</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="ticket-customer-fields"></div>
+          <label id="ticket-save-profile-wrap" style="display:flex;gap:10px;align-items:center;font-weight:600;margin:2px 0 14px;">
+            <input id="ticket-save-profile" type="checkbox" checked>
+            Save as customer profile
+          </label>
+
+          <div class="form-row cols-3" style="margin-bottom:12px;">
+            <div class="form-group"><label>Inquiry For *</label><input id="ticket-inquiry-for" placeholder="Blinds for bedroom"></div>
+            <div class="form-group"><label>Location</label><input id="ticket-location" placeholder="Area, city, site"></div>
+            <div class="form-group"><label>First Follow-up</label><input id="ticket-follow-up" type="date"></div>
+          </div>
+
+          <div class="form-group">
+            <label>Remarks *</label>
+            <textarea id="ticket-notes" rows="4" placeholder="Requirement details, next action, samples, budget, urgency..."></textarea>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+            <button class="btn btn-secondary" onclick="resetTicketForm()">Clear</button>
+            <button class="btn btn-primary" id="save-ticket-btn" onclick="saveTicket()">
+              <i class="fa-solid fa-plus"></i> Create Ticket
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header" style="gap:12px;flex-wrap:wrap;">
+          <div>
+            <h2>Open Tickets</h2>
+            <span class="text-muted text-sm"><span id="ticket-count">-</span> · Click a ticket to open its full CRM detail view.</span>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <select id="ticket-status-filter" class="filter-select" onchange="renderTickets()">
+              <option value="active">Active</option>
+              <option value="open">Open</option>
+              <option value="followup">Followup</option>
+              <option value="order_confirmed">Order Confirmed</option>
+              <option value="converted">Converted</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="">All</option>
+            </select>
+            <button class="btn btn-secondary btn-sm" onclick="loadTickets()">
+              <i class="fa-solid fa-rotate"></i> Refresh
+            </button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Ticket</th>
+                <th>Customer</th>
+                <th>Inquiry</th>
+                <th>Location</th>
+                <th>Allocated</th>
+                <th>Remarks / History</th>
+                <th>Follow-up</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="tickets-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">Ticket</h3>
+      <button class="modal-close" onclick="closeModal()"><i class="fa-solid fa-times"></i></button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/customer-source.js"></script>
+<script src="js/transitions.js"></script>
+<script src="js/sidebar.js"></script>
+<script src="js/tickets.js"></script>
+<script>initTicketsPage()</script>
+</body>
+</html>

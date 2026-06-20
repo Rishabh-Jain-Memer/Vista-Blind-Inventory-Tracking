@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings - Vista Manufacturing</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="loading-center" id="loading"><div class="spinner spinner-lg"></div></div>
+    <div id="content" class="d-none workspace-shell">
+      <div class="page-header workspace-hero">
+        <div>
+          <h1>Settings</h1>
+          <p>Manage your own login and account details.</p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header">
+          <div>
+            <h2>Account</h2>
+            <span class="text-muted text-sm">This page only changes your own login.</span>
+          </div>
+        </div>
+        <div style="padding:16px;" id="account-summary"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header">
+          <div>
+            <h2>Update Name &amp; Email</h2>
+            <span class="text-muted text-sm">Change your display name or email shown in the app.</span>
+          </div>
+        </div>
+        <div style="padding:16px;max-width:720px;">
+          <div id="profile-alert" class="alert alert-error"></div>
+          <div class="form-row cols-2">
+            <div class="form-group">
+              <label>Display Name</label>
+              <input id="edit-name" type="text" placeholder="Enter display name">
+            </div>
+            <div class="form-group">
+              <label>Email</label>
+              <input id="edit-email" type="text" placeholder="Enter email or username">
+            </div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border);padding-top:16px;margin-top:8px;">
+            <button class="btn btn-secondary" onclick="clearProfileForm()">Clear</button>
+            <button class="btn btn-primary" id="save-profile-btn" onclick="saveProfile()">
+              <i class="fa-solid fa-user-pen"></i> Save Changes
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2>Change Password</h2>
+            <span class="text-muted text-sm">Use at least 6 characters. You will stay signed in.</span>
+          </div>
+        </div>
+        <div style="padding:16px;max-width:720px;">
+          <div id="password-alert" class="alert alert-error"></div>
+          <div class="form-row cols-2">
+            <div class="form-group">
+              <label>New Password *</label>
+              <input id="new-password" type="password" placeholder="Enter new password">
+            </div>
+            <div class="form-group">
+              <label>Confirm Password *</label>
+              <input id="confirm-password" type="password" placeholder="Re-enter new password">
+            </div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border);padding-top:16px;margin-top:8px;">
+            <button class="btn btn-secondary" onclick="clearPasswordForm()">Clear</button>
+            <button class="btn btn-primary" id="save-password-btn" onclick="savePassword()">
+              <i class="fa-solid fa-key"></i> Update Password
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/transitions.js"></script>
+<script src="js/sidebar.js"></script>
+<script src="js/account-settings.js"></script>
+</body>
+</html>

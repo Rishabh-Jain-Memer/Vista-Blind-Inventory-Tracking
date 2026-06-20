@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Production Queue — Vista Manufacturing</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    .exec-item-card { border:1px solid #e5e7eb; border-radius:8px; margin-bottom:12px; padding:16px; background:#fff; }
+    .cut-input-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px; }
+    .cut-input-block { background:#f8fafc; border-radius:6px; padding:10px; }
+    .cut-label { font-size:11px; color:#64748b; text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; }
+    .cut-planned { font-size:13px; font-weight:600; margin-bottom:6px; }
+    .cut-input-block input { width:100%; padding:5px 8px; border:1px solid #d1d5db; border-radius:4px; font-size:12px; }
+    .comp-input { width:80px; padding:3px 6px; border:1px solid #d1d5db; border-radius:4px; font-size:12px; }
+    .roll-select { width:100%; font-size:11px; padding:4px 6px; border:1px solid #d1d5db; border-radius:4px; background:#fff; margin-top:4px; }
+  </style>
+</head>
+<body>
+  <!-- Production queue page: executer-role workflow controlled by js/executer-dashboard.js. -->
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="loading-center" id="loading"><div class="spinner spinner-lg"></div></div>
+    <div id="content" class="d-none">
+
+      <!-- ── QUEUE VIEW ──────────────────────────────────────────── -->
+      <div id="queue-view">
+        <div class="page-header">
+          <div>
+            <h1>Production Queue</h1>
+            <p id="queue-count">Loading…</p>
+          </div>
+          <button class="btn btn-secondary" onclick="window.location.reload()">
+            <i class="fa-solid fa-rotate-right"></i> Refresh
+          </button>
+        </div>
+        <div id="queue-list"></div>
+      </div>
+
+      <!-- ── ORDER DETAIL VIEW ────────────────────────────────────── -->
+      <div id="detail-view" style="display:none;">
+        <div class="page-header" style="margin-bottom:1rem;">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <button class="btn btn-secondary btn-sm" onclick="backToQueue()">
+              <i class="fa-solid fa-arrow-left"></i> Back to Queue
+            </button>
+            <div>
+              <h1 id="detail-order-title" style="margin:0;font-size:18px;">Order Details</h1>
+              <p id="detail-order-sub" style="margin:0;font-size:13px;color:#64748b;"></p>
+            </div>
+          </div>
+        </div>
+        <div id="detail-body"></div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/transitions.js"></script>
+<script src="js/sidebar.js"></script>
+<script src="js/executer-dashboard.js"></script>
+</body>
+</html>

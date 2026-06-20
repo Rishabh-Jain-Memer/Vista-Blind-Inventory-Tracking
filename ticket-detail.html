@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ticket Detail - Vista Manufacturing</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="loading-center" id="loading"><div class="spinner spinner-lg"></div></div>
+    <div id="content" class="d-none workspace-shell">
+      <div class="page-header workspace-hero" style="gap:16px;align-items:flex-start;">
+        <div>
+          <button class="btn btn-secondary btn-sm" onclick="window.location.href='tickets.html'" style="margin-bottom:12px;">
+            <i class="fa-solid fa-arrow-left"></i> Tickets
+          </button>
+          <h1 id="ticket-title">Ticket</h1>
+          <p id="ticket-subtitle">Customer inquiry detail, follow-ups, and order handoff.</p>
+        </div>
+        <div id="ticket-status-pill"></div>
+      </div>
+
+      <div id="ticket-alert" class="alert alert-error"></div>
+
+      <div id="ticket-actions" style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-bottom:16px;"></div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header">
+          <div>
+            <h2>Customer Context</h2>
+            <span class="text-muted text-sm">Inquiry owner, customer contact, next action, and current status.</span>
+          </div>
+        </div>
+        <div id="ticket-context" style="padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;"></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;align-items:start;">
+        <div class="card">
+          <div class="card-header">
+            <h2>Requirement</h2>
+          </div>
+          <div id="ticket-requirement" style="padding:16px;white-space:pre-wrap;color:#334155;font-size:14px;line-height:1.55;"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2>CRM Timeline</h2>
+              <span class="text-muted text-sm">Append-only follow-up history.</span>
+            </div>
+          </div>
+          <div id="ticket-timeline" style="padding:16px;display:grid;gap:12px;"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">Ticket</h3>
+      <button class="modal-close" onclick="closeModal()"><i class="fa-solid fa-times"></i></button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/transitions.js"></script>
+<script src="js/sidebar.js"></script>
+<script src="js/ticket-detail.js"></script>
+<script>initTicketDetailPage()</script>
+</body>
+</html>

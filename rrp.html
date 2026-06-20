@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RRP — Vista Manufacturing</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="loading-center" id="loading"><div class="spinner spinner-lg"></div></div>
+    <div id="content" class="d-none">
+
+      <div class="page-header">
+        <div>
+          <h1>RRP</h1>
+          <p class="text-muted text-sm">Retail &amp; dealer price list — used as the default selling rate when creating orders.</p>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;" id="header-actions">
+          <span id="unsaved-badge" style="display:none;font-size:12px;color:#d97706;font-weight:600;background:#fef3c7;padding:3px 10px;border-radius:999px;">
+            <i class="fa-solid fa-circle-dot" style="font-size:9px;margin-right:4px;"></i>Unsaved changes
+          </span>
+          <button class="btn btn-secondary btn-sm" id="discard-btn" onclick="discardChanges()" style="display:none;">Discard</button>
+          <button class="btn btn-primary btn-sm" id="save-btn" onclick="saveChanges()" style="display:none;">
+            <i class="fa-solid fa-floppy-disk"></i> Save Changes
+          </button>
+        </div>
+      </div>
+
+      <div id="rrp-tabs" style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:1.5rem;overflow-x:auto;"></div>
+
+      <!-- ── ROLLER BLINDS TAB ──────────────────────────────────────────────── -->
+      <div>
+
+        <!-- Legend -->
+        <div class="card" style="margin-bottom:16px;padding:12px 16px;">
+          <div style="display:flex;gap:24px;flex-wrap:wrap;font-size:12px;align-items:center;">
+            <div style="color:#6b7280;"><i class="fa-solid fa-info-circle" style="margin-right:4px;color:#3b82f6;"></i>
+              RRP = Retail Price · DP = Dealer Price (auto = RRP ÷ 2) · Click any RRP cell to edit
+            </div>
+            <div style="margin-left:auto;display:flex;gap:12px;">
+              <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#dbeafe;display:inline-block;"></span> Screen</span>
+              <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#d1fae5;display:inline-block;"></span> Translucent</span>
+              <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#ede9fe;display:inline-block;"></span> Blackout</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" id="rrp-table-wrap">
+          <div class="table-wrap">
+            <table id="rrp-table" style="font-size:13px;">
+              <thead>
+                <tr>
+                  <th style="min-width:200px;">Fabric Name</th>
+                  <th style="text-align:center;min-width:80px;">Max Width</th>
+                  <th style="text-align:center;min-width:80px;">UOM</th>
+                  <th colspan="2" style="text-align:center;min-width:180px;border-left:2px solid var(--border);">Without Headrail</th>
+                  <th colspan="2" style="text-align:center;min-width:180px;border-left:2px solid var(--border);">With Headrail</th>
+                  <th colspan="2" style="text-align:center;min-width:180px;border-left:2px solid var(--border);">With Plain Cassette</th>
+                  <th colspan="2" style="text-align:center;min-width:180px;border-left:2px solid var(--border);">With Dec. Cassette</th>
+                </tr>
+                <tr style="font-size:11px;background:#f9fafb;">
+                  <th></th><th></th><th></th>
+                  <th style="text-align:center;color:#059669;border-left:2px solid var(--border);">RRP</th>
+                  <th style="text-align:center;color:#9ca3af;">DP</th>
+                  <th style="text-align:center;color:#059669;border-left:2px solid var(--border);">RRP</th>
+                  <th style="text-align:center;color:#9ca3af;">DP</th>
+                  <th style="text-align:center;color:#059669;border-left:2px solid var(--border);">RRP</th>
+                  <th style="text-align:center;color:#9ca3af;">DP</th>
+                  <th style="text-align:center;color:#059669;border-left:2px solid var(--border);">RRP</th>
+                  <th style="text-align:center;color:#9ca3af;">DP</th>
+                </tr>
+              </thead>
+              <tbody id="rrp-tbody">
+                <tr><td colspan="11" style="text-align:center;padding:24px;color:#9ca3af;">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/transitions.js"></script>
+<script src="js/sidebar.js"></script>
+<script src="js/rrp.js"></script>
+</body>
+</html>

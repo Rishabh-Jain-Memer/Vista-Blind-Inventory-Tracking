@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Orders — Vista Manufacturing</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+  <!-- Orders page: order list, filters, export controls, and embedded create-order panel controlled by js/orders.js. -->
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="loading-center" id="loading"><div class="spinner spinner-lg"></div></div>
+    <div id="content" class="d-none">
+      <div class="page-header">
+        <div><h1>Orders</h1><p id="order-count">—</p></div>
+        <div style="display:flex;gap:8px;" id="orders-page-actions">
+          <button class="btn btn-secondary" onclick="downloadOrdersReport()" id="orders-export-btn">
+            <i class="fa-solid fa-file-excel"></i> Export Excel
+          </button>
+          <button class="btn btn-secondary" onclick="openCreateStockOrderPanel()" id="new-stock-order-btn">
+            <i class="fa-solid fa-box-open"></i> New Stock Order
+          </button>
+          <button class="btn btn-primary" onclick="openCreateOrderPanel()">
+            <i class="fa-solid fa-plus"></i> New Order
+          </button>
+        </div>
+      </div>
+
+      <div class="tab-strip" id="orders-tab-strip" style="margin-bottom:1rem;">
+        <button class="page-tab-btn active" id="orders-tab-sales" onclick="switchOrdersTab('sales')">
+          <i class="fa-solid fa-cart-shopping"></i> Sales Orders
+        </button>
+        <button class="page-tab-btn" id="orders-tab-stock" onclick="switchOrdersTab('stock')">
+          <i class="fa-solid fa-boxes-stacked"></i> Stock Orders
+        </button>
+      </div>
+
+      <div class="card" id="sales-orders-card">
+        <div class="card-header" style="padding:15px;gap:10px;flex-wrap:wrap;justify-content:flex-start;">
+          <input type="text" id="search-input" placeholder="Search orders, customer, dealer..." class="filter-input">
+          <select id="status-filter" class="filter-select">
+            <option value="">All Statuses</option>
+            <option value="inquiry">Inquiry</option>
+            <option value="processing">Processing</option>
+            <option value="executed">Executed</option>
+            <option value="completed">Completed</option>
+          </select>
+          <button id="deleted-toggle-btn" class="btn btn-secondary btn-sm" onclick="toggleDeleted()" style="white-space:nowrap;">
+            <i class="fa-solid fa-trash-restore"></i> Show Deleted
+          </button>
+          <input type="date" id="date-from" class="filter-input" style="width:140px;" title="From date">
+          <input type="date" id="date-to" class="filter-input" style="width:140px;" title="To date">
+          <select id="month-filter" class="filter-select" title="Filter by month">
+            <option value="">All Months</option>
+          </select>
+          <select id="sort-filter" class="filter-select" title="Sort orders">
+            <option value="date-desc">Newest First</option>
+            <option value="date-asc">Oldest First</option>
+            <option value="month-desc">Month: Newest</option>
+            <option value="month-asc">Month: Oldest</option>
+            <option value="total-desc">Total: High to Low</option>
+            <option value="total-asc">Total: Low to High</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Order UID</th>
+              <th>Customer</th>
+              <th>Notes</th>
+              <th>Date &amp; Time</th>
+              <th>Status</th>
+              <th>Components</th>
+              <th class="tr" id="orders-th-total">Total</th>
+              <th class="tr" id="orders-th-cost">Cost</th>
+              <th class="tr" id="orders-th-profit">Net Profit</th>
+              <th></th>
+            </tr></thead>
+            <tbody id="orders-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" id="stock-orders-card" style="display:none;">
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Stock Order</th>
+              <th>Supplier</th>
+              <th>Bill / Notes</th>
+              <th>Date &amp; Time</th>
+              <th>Status</th>
+              <th class="tr">Total</th>
+              <th></th>
+            </tr></thead>
+            <tbody id="stock-orders-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">Edit Order</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/excel-export.js"></script>
+<script src="js/transitions.js"></script>
+<script src="js/sidebar.js"></script>
+<script src="js/orders.js"></script>
+</body>
+</html>

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Customer Dashboard — Vista Manufacturing</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+  <!-- Customer dashboard: customer-only order summary page controlled by js/customer-dashboard.js. -->
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="loading-center" id="loading"><div class="spinner spinner-lg"></div></div>
+    <div id="content" class="d-none">
+      <div class="page-header">
+        <div><h1 id="greeting">Welcome</h1><p>Track your orders and past purchases</p></div>
+        <a href="create-order.html" class="btn btn-primary">
+          <i class="fa-solid fa-plus"></i> Place New Order
+        </a>
+      </div>
+
+      <div class="stats-grid" style="grid-template-columns: repeat(2, 1fr);">
+        <div class="stat-card">
+          <div><div class="stat-label">Pending Orders</div><div class="stat-value" id="s-pending">—</div></div>
+          <div class="stat-icon icon-amber" style="background:#fffbeb; color:#d97706;"><i class="fa-solid fa-clock"></i></div>
+        </div>
+        <div class="stat-card">
+          <div><div class="stat-label">Completed Orders</div><div class="stat-value" id="s-completed">—</div></div>
+          <div class="stat-icon icon-green"><i class="fa-solid fa-check"></i></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 1.5rem;">
+        <div class="card-header">
+          <h2>My Order History</h2>
+          <a href="orders.html">View details →</a>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Order ID</th><th>Dealer / Ref</th><th>Date</th><th>Status</th><th class="tr">Total</th>
+            </tr></thead>
+            <tbody id="my-orders"><tr><td colspan="5" class="empty-state">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/transitions.js"></script>
+<script src="js/sidebar.js"></script>
+<script src="js/customer-dashboard.js"></script>
+</body>
+</html>

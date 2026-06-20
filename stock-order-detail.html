@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock Order Detail - Vista Manufacturing</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+  <!-- Stock order detail: download supplier order forms, view download history, and receive stock into inventory. -->
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="loading-center" id="loading"><div class="spinner spinner-lg"></div></div>
+    <div id="content" class="d-none" style="max-width:1040px; margin:0 auto;">
+      <a href="orders.html?tab=stock" class="back-link"><i class="fa-solid fa-arrow-left"></i> Back to Orders</a>
+
+      <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div>
+          <h1 id="stock-order-title">Stock Order</h1>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:4px;">
+            <span id="stock-order-badge"></span>
+            <span id="stock-order-date" class="text-muted" style="font-size:13px;"></span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button class="btn btn-secondary" onclick="openStockDownloads()">
+            <i class="fa-solid fa-clock-rotate-left"></i> Downloads
+          </button>
+          <button class="btn btn-secondary" onclick="downloadStockOrderForm()">
+            <i class="fa-solid fa-file-invoice"></i> Stock Form
+          </button>
+          <button class="btn btn-primary" id="receive-stock-btn" onclick="receiveStockOrder()">
+            <i class="fa-solid fa-boxes-stacked"></i> Receive Stock
+          </button>
+        </div>
+      </div>
+
+      <div id="detail-alert" class="d-none alert mb-3"></div>
+
+      <div class="card mb-4">
+        <div class="info-grid" id="stock-order-info"></div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-header">
+          <div>
+            <h2>Stock Order Form Details</h2>
+            <span class="text-muted text-sm">Saved from Create > Create Purchase Order and used in the downloadable supplier form.</span>
+          </div>
+        </div>
+        <div style="padding:16px;" id="stock-form-info"></div>
+      </div>
+
+      <div class="fw-600 mb-3" style="font-size:16px;">Items</div>
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Sr.</th>
+              <th>Description</th>
+              <th>Batch</th>
+              <th class="tr">Qty</th>
+              <th>Unit</th>
+              <th class="tr">Rate</th>
+              <th class="tr">Amount</th>
+            </tr></thead>
+            <tbody id="stock-items-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3 id="modal-title">Downloads</h3>
+      <button class="modal-close" onclick="closeModal()">x</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/transitions.js"></script>
+<script src="js/sidebar.js"></script>
+<script src="js/stock-order-detail.js"></script>
+</body>
+</html>
