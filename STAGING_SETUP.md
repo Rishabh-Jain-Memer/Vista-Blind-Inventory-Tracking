@@ -4,7 +4,7 @@ Use this workflow before making major website or database changes. The goal is t
 
 ## Isolated Clone Status
 
-This `Vista Blind Tracking New` clone is not linked to the existing production Supabase project. `js/config.js` currently has blank primary Supabase credentials and will fail closed until the new project URL and anon/publishable key are set. The old live project references below are historical safety references copied from the original app, not targets for new development.
+This `Vista Blind Tracking New` clone is linked to the separate Supabase project `knawjdrsdqgyfzqzddix`. The old live project references below are historical safety references copied from the original app, not targets for new development.
 
 ## What Is Already Set Up
 
@@ -15,7 +15,7 @@ https://akjybtvaezxayfwtpifd.supabase.co
 ```
 
 - Local development can switch to a separate Supabase project through `dev-environment.html`.
-- Production hosts ignore local staging settings and require the primary credentials in `js/config.js`.
+- Production hosts ignore local staging settings and use `https://knawjdrsdqgyfzqzddix.supabase.co` from `js/config.js`.
 - Staging settings are stored only in the current browser's `localStorage`.
 - A yellow `STAGING DB` badge appears on app pages when local development is using staging.
 - Current staging project: `vehnkaoutoleonigzuzp` (`Vista Blind Dev Environment`).
@@ -155,5 +155,5 @@ Expected production values:
 
 ```text
 live
-https://akjybtvaezxayfwtpifd.supabase.co
+https://knawjdrsdqgyfzqzddix.supabase.co
 ```

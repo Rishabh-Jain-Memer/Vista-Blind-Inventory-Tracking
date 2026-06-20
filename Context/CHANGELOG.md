@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-20 - Isolated Supabase Project Wiring
+
+- Wired `js/config.js` to the isolated Supabase project `knawjdrsdqgyfzqzddix` using the public publishable key.
+- Updated `dev-environment.html`, `README.md`, `STAGING_SETUP.md`, `Context/CURRENT_STATE.md`, `Context/ARCHITECTURE.md`, and `Context/AI_GUARDRAILS.md` so this clone points future work at the new project, not the original production database.
+- Verified the public key reaches the new Supabase REST API; `profiles` currently returns table-not-found, so the database schema still needs migrations applied through a direct database connection string or a Supabase CLI account with project access.
+- Attempted `supabase link --project-ref knawjdrsdqgyfzqzddix --yes`; the local Supabase CLI profile returned `403`, so linked CLI migrations are blocked until project access is granted.
+
 ## 2026-06-09 - Local Staging Lane Setup
 
 - Reworked `js/config.js` so production/non-local hosts always use the live Supabase project, while local hosts can opt into a staging Supabase project through browser localStorage or URL params.

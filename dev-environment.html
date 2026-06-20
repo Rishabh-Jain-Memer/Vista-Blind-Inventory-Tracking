@@ -112,7 +112,7 @@
 <body>
   <main>
     <h1>Vista Development Environment</h1>
-    <p>This local-only setup stores staging Supabase credentials in this browser. This isolated clone is not wired to the production Supabase project.</p>
+    <p>This local-only setup stores staging Supabase credentials in this browser. This isolated clone is wired to its own primary Supabase project.</p>
 
     <div class="row">
       <div>
@@ -147,7 +147,7 @@
       stagingUrl: 'vista_supabase_staging_url',
       stagingAnonKey: 'vista_supabase_staging_anon_key',
     }
-    const liveUrl = 'Not configured in this isolated clone'
+    const liveUrl = 'https://knawjdrsdqgyfzqzddix.supabase.co'
     const isLocal = ['localhost', '127.0.0.1', '::1', ''].includes(window.location.hostname)
 
     function el(id) { return document.getElementById(id) }

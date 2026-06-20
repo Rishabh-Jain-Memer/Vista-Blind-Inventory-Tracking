@@ -52,7 +52,7 @@ Every future agent should read `Context/AI_RULES.md`, `Context/AI_GUARDRAILS.md`
 
 `js/config.js` now has a guarded environment selector:
 
-- Production and non-local hosts always use live Supabase `akjybtvaezxayfwtpifd`.
+- Production and non-local hosts use the isolated Supabase project `knawjdrsdqgyfzqzddix`.
 - Local hosts (`localhost`, `127.0.0.1`, `::1`) can switch to staging through `dev-environment.html`, URL params, or browser `localStorage`.
 - When local staging is active, app pages show a yellow `STAGING DB` badge and expose `window.VISTA_SUPABASE_ENV = 'staging'`.
 
@@ -63,7 +63,7 @@ scripts/generate_restore_sql_from_backup.py
 scripts/restore_backup_to_staging.ps1
 ```
 
-This checkout remains linked to the live Supabase project, so staging writes must use `supabase db query --db-url $env:STAGING_DB_URL`, not `--linked`.
+The local Supabase CLI profile cannot link to `knawjdrsdqgyfzqzddix` yet, so migration writes should use the direct database connection string with `supabase db query --db-url $env:VISTA_NEW_DB_URL` unless CLI project access is granted.
 
 ## Current Inventory Schema Expected By The App
 

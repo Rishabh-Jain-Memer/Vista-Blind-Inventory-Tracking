@@ -6,7 +6,7 @@ There is no frontend build step. Open the project through a local HTTP server su
 
 ## Isolated Development Clone
 
-This checkout was created for isolated development under `Rishabh-Jain-Memer/Vista-Blind-Inventory-Tracking`. It is intentionally not wired to the existing production Supabase project. `js/config.js` fails closed until the new Supabase project URL and anon/publishable key are configured, or until local testing is pointed at a separate project through `dev-environment.html`.
+This checkout was created for isolated development under `Rishabh-Jain-Memer/Vista-Blind-Inventory-Tracking`. It is wired to the separate Supabase project `knawjdrsdqgyfzqzddix`, not the existing production Supabase project.
 
 ## Current Code Layout
 
@@ -25,7 +25,7 @@ This checkout was created for isolated development under `Rishabh-Jain-Memer/Vis
 
 ## Safe Staging Lane
 
-Major website/database changes should be tested against a separate Supabase project, never the current production database. In this isolated clone, production/non-local pages do not have a Supabase fallback until the new project credentials are added to `js/config.js`; local development can opt into a separate project through `dev-environment.html`.
+Major website/database changes should be tested against the new isolated Supabase project, never the current production database. In this isolated clone, production/non-local pages use the project configured in `js/config.js`; local development can still opt into another separate project through `dev-environment.html`.
 
 Use `STAGING_SETUP.md` for the full setup. The short version:
 

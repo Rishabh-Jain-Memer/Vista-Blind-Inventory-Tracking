@@ -5,8 +5,9 @@ Last updated: 2026-06-20.
 ## Isolated Clone Created On 2026-06-20
 
 - This checkout was cloned into `D:\Downloads\Vista Blind\Vista Blind Tracking New` from the active local app folder and attached to `https://github.com/Rishabh-Jain-Memer/Vista-Blind-Inventory-Tracking.git`.
-- `js/config.js` is intentionally not configured with the original production Supabase URL/key. The app fails closed until the new Supabase project URL and anon/publishable key are added, or local testing is pointed at a separate project through `dev-environment.html`.
+- `js/config.js` is configured with the new isolated Supabase project `knawjdrsdqgyfzqzddix` at `https://knawjdrsdqgyfzqzddix.supabase.co`.
 - The copied original Supabase project refs in older Context/docs are historical safety references. Do not treat them as the target database for this new clone.
+- The local Supabase CLI profile cannot link or inspect project `knawjdrsdqgyfzqzddix`; `supabase link --project-ref knawjdrsdqgyfzqzddix --yes` returns a `403` permissions error. Use the new project's direct Postgres connection string / database password for migration work unless CLI access is granted.
 - The Supabase CLI can see an older `Vista Blind Dev Environment` project (`vehnkaoutoleonigzuzp`), but it is currently `INACTIVE` and did not return API keys during setup.
 
 ## Staging Lane Added On 2026-06-09

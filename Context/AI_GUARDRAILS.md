@@ -299,7 +299,7 @@ Do not resurrect deleted historical migrations.
 
 Do not add a Supabase service-role key to browser code. Admin Auth user creation, deletion, email edits, and password resets must go through a server-side function such as `supabase/functions/admin-users`.
 
-For staging work, do not use `supabase db query --linked` for writes because this checkout is linked to live. Use an explicit staging Postgres connection string with `--db-url $env:STAGING_DB_URL`, and verify it does not contain the live project ref `akjybtvaezxayfwtpifd`.
+For database work in this isolated clone, do not use `supabase db query --linked` unless the CLI has been explicitly linked to `knawjdrsdqgyfzqzddix`. Use the new project's direct Postgres connection string with `--db-url $env:VISTA_NEW_DB_URL`, and verify it does not contain the old live project ref `akjybtvaezxayfwtpifd`.
 
 Executer production depends on `public.execute_order(...)` from migration 19. Do not replace it with browser-side inventory deduction; the browser should save cut inputs, then the RPC should deduct inventory and mark rows executed/deducted.
 

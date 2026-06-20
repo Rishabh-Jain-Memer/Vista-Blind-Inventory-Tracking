@@ -4,13 +4,12 @@
   Only the public anon key belongs in browser code. Service-role keys must stay
   on Supabase/server-side functions and must never be committed or shipped.
 
-  This isolated clone is intentionally not wired to the production Supabase
-  project. Add the new project's public URL and anon/publishable key below, or
-  use dev-environment.html on localhost to test against a separate project.
+  This isolated clone is wired to the separate Supabase project below. Only the
+  public anon/publishable key belongs in this browser code.
 */
 
-const LIVE_SUPABASE_URL = ''
-const LIVE_SUPABASE_ANON_KEY = ''
+const LIVE_SUPABASE_URL = 'https://knawjdrsdqgyfzqzddix.supabase.co'
+const LIVE_SUPABASE_ANON_KEY = 'sb_publishable_hG8vWGKjis6mmoXlvjlVmw_eqIpMI2C'
 
 const VISTA_ENV_KEYS = {
   env: 'vista_supabase_env',
