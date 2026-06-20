@@ -8,6 +8,8 @@ There is no frontend build step. Open the project through a local HTTP server su
 
 This checkout was created for isolated development under `Rishabh-Jain-Memer/Vista-Blind-Inventory-Tracking`. It is wired to the separate Supabase project `knawjdrsdqgyfzqzddix`, not the existing production Supabase project.
 
+For a clean new database with login and Profiles only, run the SQL files in `supabase/setup/` in order. They create the empty app schema and first admin profile without importing fabric/catalog data.
+
 ## Current Code Layout
 
 | Area | Files | Responsibility |

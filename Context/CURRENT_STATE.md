@@ -9,6 +9,7 @@ Last updated: 2026-06-20.
 - The copied original Supabase project refs in older Context/docs are historical safety references. Do not treat them as the target database for this new clone.
 - The local Supabase CLI profile cannot link or inspect project `knawjdrsdqgyfzqzddix`; `supabase link --project-ref knawjdrsdqgyfzqzddix --yes` returns a `403` permissions error. Use the new project's direct Postgres connection string / database password for migration work unless CLI access is granted.
 - The Supabase CLI can see an older `Vista Blind Dev Environment` project (`vehnkaoutoleonigzuzp`), but it is currently `INACTIVE` and did not return API keys during setup.
+- Empty new-project setup files now live in `supabase/setup/`: run `001_new_project_empty_schema.sql` first, then create the first Auth user in Supabase Dashboard and run `002_link_first_admin_profile.sql` with that user's email. This creates the app schema without fabric/catalog/order data and links the first admin profile for login.
 
 ## Staging Lane Added On 2026-06-09
 

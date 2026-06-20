@@ -6,6 +6,7 @@
 - Updated `dev-environment.html`, `README.md`, `STAGING_SETUP.md`, `Context/CURRENT_STATE.md`, `Context/ARCHITECTURE.md`, and `Context/AI_GUARDRAILS.md` so this clone points future work at the new project, not the original production database.
 - Verified the public key reaches the new Supabase REST API; `profiles` currently returns table-not-found, so the database schema still needs migrations applied through a direct database connection string or a Supabase CLI account with project access.
 - Attempted `supabase link --project-ref knawjdrsdqgyfzqzddix --yes`; the local Supabase CLI profile returned `403`, so linked CLI migrations are blocked until project access is granted.
+- Added `supabase/setup/001_new_project_empty_schema.sql` and `002_link_first_admin_profile.sql` to bootstrap the new Supabase project with empty structural tables and the first admin profile, without importing fabric/catalog data.
 
 ## 2026-06-09 - Local Staging Lane Setup
 
