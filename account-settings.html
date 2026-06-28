@@ -29,11 +29,25 @@
         <div style="padding:16px;" id="account-summary"></div>
       </div>
 
+      <div class="card test-mode-card" id="admin-test-mode-card">
+        <div class="test-mode-panel">
+          <div class="test-mode-copy">
+            <div class="test-mode-kicker"><i class="fa-solid fa-flask"></i> Admin sandbox</div>
+            <div class="test-mode-title">Test Mode</div>
+            <div class="test-mode-text">Capture trial orders, inventory movements, and master changes locally before committing real Supabase data.</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="test-mode-toggle-btn" onclick="toggleAdminTestMode()">
+            <i class="fa-solid fa-flask"></i> Loading
+          </button>
+        </div>
+        <div id="test-mode-status" class="test-mode-status"></div>
+      </div>
+
       <div class="card" style="margin-bottom:16px;">
         <div class="card-header">
           <div>
-            <h2>Update Name &amp; Email</h2>
-            <span class="text-muted text-sm">Change your display name or email shown in the app.</span>
+            <h2>Update Name &amp; Username</h2>
+            <span class="text-muted text-sm">Change your display name or username shown in the app.</span>
           </div>
         </div>
         <div style="padding:16px;max-width:720px;">
@@ -44,8 +58,8 @@
               <input id="edit-name" type="text" placeholder="Enter display name">
             </div>
             <div class="form-group">
-              <label>Email</label>
-              <input id="edit-email" type="text" placeholder="Enter email or username">
+              <label>Username</label>
+              <input id="edit-username" type="text" placeholder="Enter username" autocomplete="username">
             </div>
           </div>
           <div style="display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border);padding-top:16px;margin-top:8px;">
@@ -66,14 +80,18 @@
         </div>
         <div style="padding:16px;max-width:720px;">
           <div id="password-alert" class="alert alert-error"></div>
+          <div class="form-group">
+            <label>Current Password *</label>
+            <input id="current-password" type="password" placeholder="Enter current password" autocomplete="current-password">
+          </div>
           <div class="form-row cols-2">
             <div class="form-group">
               <label>New Password *</label>
-              <input id="new-password" type="password" placeholder="Enter new password">
+              <input id="new-password" type="password" placeholder="Enter new password" autocomplete="new-password">
             </div>
             <div class="form-group">
               <label>Confirm Password *</label>
-              <input id="confirm-password" type="password" placeholder="Re-enter new password">
+              <input id="confirm-password" type="password" placeholder="Re-enter new password" autocomplete="new-password">
             </div>
           </div>
           <div style="display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border);padding-top:16px;margin-top:8px;">
@@ -91,6 +109,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/auth.js"></script>
+<script src="js/test-mode.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/transitions.js"></script>
 <script src="js/sidebar.js"></script>

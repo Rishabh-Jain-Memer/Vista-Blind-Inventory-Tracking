@@ -2,12 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Activity Log — Vista Manufacturing</title>
+  <title>Activity Log - Vista Manufacturing</title>
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body>
-  <!-- Activity log page: audit trail filters and table are loaded by js/activity-log.js. -->
 <div class="app">
   <aside class="sidebar" id="sidebar"></aside>
   <main class="main">
@@ -16,13 +15,13 @@
       <div class="page-header">
         <div>
           <h1>Activity Log</h1>
-          <p>Every create, edit, delete, and status change — who did it and when</p>
+          <p>Audit trail for creates, edits, deletes, stock changes, and execution</p>
         </div>
       </div>
 
       <div class="card" style="margin-bottom:20px;">
         <div class="card-header" style="padding:15px;gap:10px;flex-wrap:wrap;justify-content:flex-start;">
-          <input type="text" id="search-input" placeholder="Search by name, user, action..." class="filter-input">
+          <input type="text" id="search-input" placeholder="Search user, action, item..." class="filter-input">
           <select id="action-filter" class="filter-select">
             <option value="">All Actions</option>
             <option value="create">Create</option>
@@ -31,15 +30,16 @@
             <option value="status_change">Status Change</option>
             <option value="stock_adjust">Stock Adjust</option>
             <option value="stock_receive">Stock Receive</option>
+            <option value="execute">Execute</option>
           </select>
           <select id="entity-filter" class="filter-select">
             <option value="">All Types</option>
             <option value="order">Orders</option>
-            <option value="order_item">Order Items</option>
-            <option value="sku">SKUs</option>
+            <option value="order_ticket">Tickets</option>
             <option value="roll">Rolls / Inventory</option>
-            <option value="material">Materials</option>
-            <option value="recipe">Components</option>
+            <option value="variant">Stock Items</option>
+            <option value="master_node">Masters</option>
+            <option value="cut_piece">Cut Pieces</option>
           </select>
           <input type="date" id="date-from" class="filter-input" style="width:140px;" title="From date">
           <input type="date" id="date-to" class="filter-input" style="width:140px;" title="To date">
@@ -60,8 +60,8 @@
             <tbody id="log-body"></tbody>
           </table>
         </div>
-        <div class="card-footer" id="log-footer" style="padding:12px 16px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted);display:flex;justify-content:space-between;align-items:center;">
-          <span id="log-count">—</span>
+        <div class="card-footer" style="padding:12px 16px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted);display:flex;justify-content:space-between;align-items:center;">
+          <span id="log-count">-</span>
           <button class="btn btn-secondary btn-sm" id="load-more-btn" onclick="loadMore()" style="display:none;">
             <i class="fa-solid fa-chevron-down"></i> Load more
           </button>
@@ -74,6 +74,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/auth.js"></script>
+<script src="js/test-mode.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/transitions.js"></script>
 <script src="js/sidebar.js"></script>

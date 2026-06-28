@@ -21,7 +21,7 @@
         </div>
       </div>
 
-      <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:1.5rem;">
+      <div class="profile-tab-strip">
         <button class="page-tab-btn active" id="tab-btn-employees" onclick="switchTab('employees')">
           <i class="fa-solid fa-users"></i> Employees
         </button>
@@ -40,6 +40,9 @@
             <div class="profile-toolbar-subtitle">Manage team access and activity history.</div>
           </div>
           <div class="profile-toolbar-actions">
+            <button class="btn btn-secondary btn-sm" onclick="loadEmployees()" title="Refresh employees">
+              <i class="fa-solid fa-rotate"></i> Refresh
+            </button>
             <button class="btn btn-primary btn-sm" onclick="openAddUserModal()">
               <i class="fa-solid fa-plus"></i> Add Employee
             </button>
@@ -51,10 +54,25 @@
             <span class="fw-600" style="font-size:13px;">Roles & Access</span>
           </div>
           <div style="padding:12px 16px;display:flex;gap:20px;flex-wrap:wrap;font-size:13px;">
-            <div><span class="badge badge-admin" style="margin-right:6px;">admin</span>Full access</div>
-            <div><span class="badge badge-executer" style="margin-right:6px;">executer</span>Production queue only</div>
-            <div><span class="badge badge-sales" style="margin-right:6px;">sales</span>Orders and customers</div>
+            <div><span class="badge badge-admin" style="margin-right:6px;">admin</span>Full access and profile creation</div>
+            <div><span class="badge badge-management" style="margin-right:6px;">management</span>Full website visibility</div>
+            <div><span class="badge badge-sales" style="margin-right:6px;">sales</span>Full website visibility</div>
+            <div><span class="badge badge-executer" style="margin-right:6px;">executer</span>Full website visibility</div>
           </div>
+        </div>
+
+        <div class="card test-mode-card" id="admin-test-mode-card">
+          <div class="test-mode-panel">
+            <div class="test-mode-copy">
+              <div class="test-mode-kicker"><i class="fa-solid fa-flask"></i> Admin sandbox</div>
+              <div class="test-mode-title">Test Mode</div>
+              <div class="test-mode-text">Capture trial orders, inventory movements, and master changes locally before committing real Supabase data.</div>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="test-mode-toggle-btn" onclick="toggleAdminTestMode()">
+              <i class="fa-solid fa-flask"></i> Loading
+            </button>
+          </div>
+          <div id="test-mode-status" class="test-mode-status"></div>
         </div>
 
         <div class="card" id="employees-list">
@@ -62,7 +80,7 @@
             <table>
               <thead><tr>
                 <th>Name</th>
-                <th>Email</th>
+                <th>Username</th>
                 <th>Role</th>
                 <th>Activity</th>
                 <th>Joined</th>
@@ -162,13 +180,14 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-<script src="js/config.js"></script>
-<script src="js/auth.js"></script>
+<script src="js/config.js?v=20260628-app-auth-1"></script>
+<script src="js/auth.js?v=20260628-app-auth-1"></script>
+<script src="js/test-mode.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/excel-export.js"></script>
 <script src="js/customer-source.js"></script>
 <script src="js/transitions.js"></script>
 <script src="js/sidebar.js"></script>
-<script src="js/settings.js"></script>
+<script src="js/settings.js?v=20260628-employees-2"></script>
 </body>
 </html>

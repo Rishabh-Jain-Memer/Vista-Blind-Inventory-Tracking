@@ -5,7 +5,7 @@
   relevant audit log, orders, reports, and inventory records.
 */
 
-const ROLES = ['admin', 'executer', 'sales']
+const ROLES = ['admin', 'management', 'sales', 'executer']
 
 let myId = null
 let currentTab = 'employees'
@@ -35,7 +35,7 @@ function profileMoney(n) {
 
 function orderStatus(o) {
   const s = String(o?.status || '').toLowerCase()
-  if (s === 'discussing' || s === 'pending') return 'inquiry'
+  if (s === 'discussing' || s === 'pending' || s === 'inquiry') return 'active'
   if (s === 'in progress') return 'processing'
   return s
 }
@@ -70,47 +70,38 @@ function setProfileMode(tab, mode) {
   if (detail) detail.style.display = mode === 'detail' ? '' : 'none'
 }
 
-async function adminUserAction(action, payload = {}) {
-  const { data, error } = await db.functions.invoke('admin-users', {
-    body: { action, ...payload },
-  })
-  if (error) throw new Error(error.message || 'Admin user function failed')
-  if (data?.error) throw new Error(data.error)
-  return data || {}
+function isAdmin() {
+  return currentRole === 'admin'
+}
+
+function appToken() {
+  return AUTH.token()
 }
 
 async function init() {
   const profile = await initSidebar()
   if (!profile) return
-  if (!['admin', 'sales'].includes(profile.role)) { window.location.href = 'dashboard.html'; return }
   myId = profile.id
   currentRole = profile.role
 
-  if (profile.role === 'sales') {
-    configureSalesProfilesMode()
-    await Promise.all([
-      loadEmployees(),
-      loadSalesOrders(),
-    ])
-  } else {
-    await Promise.all([
-      loadEmployees(),
-      loadCustomers(),
-      loadSuppliers(),
-    ])
-  }
+  await Promise.all([
+    loadEmployees(),
+    loadCustomers(),
+    loadSuppliers(),
+  ])
 
   const hash = window.location.hash.replace('#', '')
-  const tab = profile.role === 'sales'
-    ? 'employees'
-    : (['employees', 'customers', 'suppliers'].includes(hash) ? hash : 'employees')
+  const tab = ['employees', 'customers', 'suppliers'].includes(hash) ? hash : 'employees'
   switchTab(tab)
+  applyProfilePermissions()
   hide('loading')
   show('content')
 }
 
 function isSalesProfilesMode() {
-  return currentRole === 'sales'
+  // All roles keep full website/profile visibility for now. Admin-only actions
+  // are still enforced separately through applyProfilePermissions() and RPCs.
+  return false
 }
 
 function configureSalesProfilesMode() {
@@ -122,6 +113,51 @@ function configureSalesProfilesMode() {
   document.getElementById('roles-access-card')?.remove()
   const pageHeader = document.querySelector('.page-header p')
   if (pageHeader) pageHeader.textContent = 'Executer directory and order assignment for the sales team.'
+}
+
+function applyProfilePermissions() {
+  renderAdminTestMode()
+  if (isAdmin()) return
+  document.getElementById('admin-test-mode-card')?.remove()
+  document.querySelectorAll(
+    'button[onclick^="openAddUserModal"], button[onclick^="openAddCustomerModal"], button[onclick^="openAddSupplierModal"]'
+  ).forEach(btn => btn.remove())
+}
+
+function renderAdminTestMode() {
+  const card = document.getElementById('admin-test-mode-card')
+  if (!card) return
+  if (!isAdmin()) {
+    card.remove()
+    return
+  }
+  const enabled = Boolean(window.VISTA_TEST_MODE?.isEnabled?.())
+  const active = Boolean(window.VISTA_TEST_MODE?.isActive?.())
+  const btn = document.getElementById('test-mode-toggle-btn')
+  const status = document.getElementById('test-mode-status')
+  if (btn) {
+    btn.className = `btn btn-sm ${enabled ? 'btn-primary' : 'btn-secondary'}`
+    btn.innerHTML = enabled
+      ? '<i class="fa-solid fa-toggle-on"></i> Turn Off Test Mode'
+      : '<i class="fa-solid fa-toggle-off"></i> Turn On Test Mode'
+  }
+  if (status) {
+    status.className = `test-mode-status ${enabled ? 'is-active' : 'is-ready'}`
+    status.textContent = enabled
+      ? (active ? 'Active in this browser. Turning it off clears local test changes and reloads real data.' : 'Enabled, and it will activate after your admin session is confirmed.')
+      : 'Ready. Actions currently write to the isolated Supabase project.'
+  }
+}
+
+function toggleAdminTestMode() {
+  if (!isAdmin()) {
+    toast('Only admin can use test mode', 'error')
+    return
+  }
+  const next = !Boolean(window.VISTA_TEST_MODE?.isEnabled?.())
+  if (!next && !confirm('Turn off test mode?\n\nAll local test changes will be discarded and the page will reload real data.')) return
+  window.VISTA_TEST_MODE?.setEnabled?.(next)
+  window.location.reload()
 }
 
 function switchTab(name) {
@@ -137,13 +173,18 @@ function switchTab(name) {
 // Employees
 async function loadEmployees() {
   const [profilesRes, logsRes] = await Promise.all([
-    db.from('profiles').select('*').order('created_at'),
+    db.from('profiles').select('id, username, email, role, full_name, created_at, is_active').order('created_at', { ascending: false }),
     db.from('activity_logs').select('*').order('created_at', { ascending: false }).limit(500),
   ])
   if (profilesRes.error) { toast(profilesRes.error.message, 'error'); return }
   if (logsRes.error) console.warn('activity_logs load error:', logsRes.error.message)
 
-  allEmployees = (profilesRes.data || []).filter(u => isSalesProfilesMode() ? u.role === 'executer' : true)
+  let profileRows = profilesRes.data || []
+  if (!profileRows.length) {
+    profileRows = await loadEmployeesViaRestFallback()
+  }
+
+  allEmployees = profileRows.filter(u => isSalesProfilesMode() ? u.role === 'executer' : true)
   allEmployeeLogs = logsRes.data || []
   employeeActivityCounts = {}
   for (const l of allEmployeeLogs) {
@@ -153,13 +194,33 @@ async function loadEmployees() {
   renderEmployees()
 }
 
+async function loadEmployeesViaRestFallback() {
+  try {
+    const params = 'select=id,username,email,role,full_name,created_at,is_active&order=created_at.desc'
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?${params}`, {
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+    })
+    if (!res.ok) {
+      console.warn('profiles fallback failed:', await res.text())
+      return []
+    }
+    return await res.json()
+  } catch (err) {
+    console.warn('profiles fallback failed:', err?.message || err)
+    return []
+  }
+}
+
 function renderEmployees() {
   text('employee-count', `${isSalesProfilesMode() ? 'Executers' : 'Employees'} (${allEmployees.length})`)
   const subtitle = document.querySelector('#tab-employees .profile-toolbar-subtitle')
   if (subtitle) subtitle.textContent = isSalesProfilesMode()
     ? 'See all executers and assign open sales orders to them.'
     : 'Manage team access and activity history.'
-  if (isSalesProfilesMode()) {
+  if (isSalesProfilesMode() || !isAdmin()) {
     document.querySelector('#tab-employees .profile-toolbar-actions')?.remove()
   }
   if (!allEmployees.length) {
@@ -174,14 +235,14 @@ function renderEmployees() {
         ${esc(u.full_name || 'Unnamed')}
         ${u.id === myId ? '<span class="text-muted text-xs"> (you)</span>' : ''}
       </td>
-      <td class="text-muted">${esc(u.email || '-')}</td>
+      <td class="text-muted">${esc(u.username || '-')}</td>
       <td>${badge(u.role || 'executer')}</td>
       <td>${acts} action${acts !== 1 ? 's' : ''}</td>
       <td class="text-muted">${u.created_at ? fmtDate(u.created_at) : '-'}</td>
       <td style="text-align:right;white-space:nowrap;" onclick="event.stopPropagation()">
-        ${!isSalesProfilesMode() && u.id !== myId ? `
+        ${isAdmin() && !isSalesProfilesMode() && u.id !== myId ? `
           <button class="btn btn-ghost btn-sm" onclick="openEditUserModal('${u.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
-          <button class="btn btn-ghost btn-sm" style="color:#ef4444" onclick="confirmDeleteUser('${u.id}','${safeArg(u.full_name || u.email || u.id)}')" title="Delete"><i class="fa-solid fa-trash"></i></button>
+          <button class="btn btn-ghost btn-sm" style="color:#ef4444" onclick="confirmDeleteUser('${u.id}','${safeArg(u.full_name || u.username || u.id)}')" title="Delete"><i class="fa-solid fa-trash"></i></button>
         ` : `<span class="text-xs text-muted">${isSalesProfilesMode() ? 'Open profile' : 'Own account'}</span>`}
       </td>
     </tr>`
@@ -207,8 +268,8 @@ function openEmployeeProfile(userId) {
     <div class="card">
       <div class="card-header">
         <div>
-          <h2>${esc(u.full_name || u.email || 'Employee')}</h2>
-          <p class="text-muted text-sm">${esc(u.email || '')}</p>
+          <h2>${esc(u.full_name || u.username || 'Employee')}</h2>
+          <p class="text-muted text-sm">${esc(u.username || '')}</p>
         </div>
         <button class="btn btn-ghost btn-sm" onclick="closeEmployeeProfile()"><i class="fa-solid fa-arrow-left"></i> Back to Employees</button>
       </div>
@@ -233,11 +294,6 @@ function openEmployeeProfile(userId) {
             </tbody>
           </table>
         </div>
-        <div style="margin-top:12px;">
-          <a class="btn btn-ghost btn-sm" href="activity-log.html?user=${encodeURIComponent(userId)}">
-            <i class="fa-solid fa-clock-rotate-left"></i> Open Full Activity Log
-          </a>
-        </div>
       </div>
     </div>
   `)
@@ -256,7 +312,7 @@ async function loadSalesOrders() {
 }
 
 function buildSalesExecuterAssignmentHtml(executerId) {
-  const orders = allSalesOrders.filter(o => ['inquiry', 'processing'].includes(orderStatus(o)))
+  const orders = allSalesOrders.filter(o => ['active', 'processing'].includes(orderStatus(o)))
   if (!orders.length) {
     return `<div class="card" style="box-shadow:none;margin-bottom:16px;"><div style="padding:14px 16px;" class="text-muted">No open orders are waiting for executer assignment.</div></div>`
   }
@@ -287,7 +343,7 @@ function buildSalesExecuterAssignmentHtml(executerId) {
 
 async function assignExecuterFromProfiles(orderId, executerId) {
   const order = allSalesOrders.find(o => o.id === orderId)
-  const shouldMoveToProcessing = orderStatus(order) === 'inquiry'
+  const shouldMoveToProcessing = orderStatus(order) === 'active'
   const updates = {
     assigned_executor_id: executerId,
     assigned_at: new Date().toISOString(),
@@ -305,7 +361,7 @@ async function assignExecuterFromProfiles(orderId, executerId) {
   }
   await logActivity('assign', 'order', orderId, orderId, {
     assigned_executor_id: executerId,
-    status: shouldMoveToProcessing ? { old: 'inquiry', new: 'processing' } : undefined,
+    status: shouldMoveToProcessing ? { old: 'active', new: 'processing' } : undefined,
   })
   toast(shouldMoveToProcessing ? 'Executer assigned and order moved to processing' : 'Executer assigned to order')
   await loadSalesOrders()
@@ -318,11 +374,12 @@ function closeEmployeeProfile() {
 }
 
 function openAddUserModal() {
+  if (!isAdmin()) { toast('Only admin can create employee profiles', 'error'); return }
   const roleOpts = ROLES.map(r => `<option value="${r}">${r}</option>`).join('')
   openModal('Add Employee', `
     <div id="au-alert" class="alert alert-error"></div>
     <div class="form-group"><label>Full Name *</label><input id="au-name" placeholder="e.g. Amit Sharma"></div>
-    <div class="form-group"><label>Email *</label><input id="au-email" type="email" placeholder="amit@company.com"></div>
+    <div class="form-group"><label>Username *</label><input id="au-username" placeholder="amit" autocomplete="off"></div>
     <div class="form-row cols-2">
       <div class="form-group"><label>Temporary Password *</label><input id="au-pass" type="password" placeholder="Min 6 characters"></div>
       <div class="form-group"><label>Role *</label><select id="au-role">${roleOpts}</select></div>
@@ -337,30 +394,38 @@ function openAddUserModal() {
 async function saveNewUser() {
   hideAlert('au-alert')
   const fullName = val('au-name')
-  const email = val('au-email')
+  const username = val('au-username').trim().toLowerCase()
   const password = document.getElementById('au-pass').value
   const role = document.getElementById('au-role').value
   if (!fullName) { showAlert('au-alert', 'Full name is required'); return }
-  if (!email) { showAlert('au-alert', 'Email is required'); return }
+  if (!username) { showAlert('au-alert', 'Username is required'); return }
   if (!password || password.length < 6) { showAlert('au-alert', 'Password must be at least 6 characters'); return }
 
   disable('au-save-btn')
-  let result
+  let created
   try {
-    result = await adminUserAction('createUser', { email, password, fullName, role })
+    const { data, error } = await db.rpc('app_create_profile', {
+      p_token: appToken(),
+      p_username: username,
+      p_password: password,
+      p_full_name: fullName,
+      p_role: role,
+    })
+    if (error) throw error
+    created = data?.[0]
   } catch (error) {
-    showAlert('au-alert', `${error.message}. Deploy supabase/functions/admin-users for secure employee management.`)
+    showAlert('au-alert', error.message || 'Could not create employee')
     disable('au-save-btn', false)
     return
   }
-  const userId = result.user?.id
-  await logActivity('create', 'employee', userId, fullName, { role })
+  await logActivity('create', 'employee', created?.id, fullName, { role, username })
   toast(`Employee "${fullName}" created`)
   closeModal()
   await loadEmployees()
 }
 
 function openEditUserModal(userId) {
+  if (!isAdmin()) { toast('Only admin can edit employee profiles', 'error'); return }
   const u = allEmployees.find(x => x.id === userId)
   if (!u) return
   const roleOpts = ROLES.map(r => `<option value="${r}" ${r === u.role ? 'selected' : ''}>${r}</option>`).join('')
@@ -368,13 +433,9 @@ function openEditUserModal(userId) {
   openModal('Edit Employee', `
     <div id="eu-alert" class="alert alert-error"></div>
     <div class="form-group"><label>Full Name</label><input id="eu-name" value="${esc(u.full_name || '')}"></div>
-    <div class="form-group">
-      <label>Email ${isTargetAdmin ? '<span class="text-xs text-muted">Admin email cannot be changed here</span>' : ''}</label>
-      <input id="eu-email" type="email" value="${esc(u.email || '')}" ${isTargetAdmin ? 'disabled' : ''}>
-    </div>
+    <div class="form-group"><label>Username</label><input id="eu-username" value="${esc(u.username || '')}" ${isTargetAdmin ? 'disabled' : ''}></div>
     <div class="form-group"><label>Role</label><select id="eu-role">${roleOpts}</select></div>
     <div class="modal-footer" style="padding:0;margin-top:1rem;">
-      ${isTargetAdmin ? '' : `<button class="btn btn-secondary" onclick="openResetUserPasswordModal('${userId}')"><i class="fa-solid fa-key"></i> Reset Password</button>`}
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveUserEdit('${userId}')">Save Changes</button>
     </div>
@@ -385,75 +446,26 @@ async function saveUserEdit(userId) {
   hideAlert('eu-alert')
   const target = allEmployees.find(x => x.id === userId)
   const fullName = val('eu-name') || null
-  const email = val('eu-email') || null
+  const username = (document.getElementById('eu-username')?.value || target?.username || '').trim().toLowerCase()
   const role = document.getElementById('eu-role').value
-  if (target?.role !== 'admin' && email && email.toLowerCase() !== String(target?.email || '').toLowerCase()) {
-    try {
-      await adminUserAction('updateUserEmail', { userId, email })
-    } catch (error) {
-      showAlert('eu-alert', `${error.message}. Deploy supabase/functions/admin-users for secure employee management.`)
-      return
-    }
-  }
-  const updates = { full_name: fullName, role }
-  if (target?.role !== 'admin' && email) updates.email = email
-  const { error } = await db.from('profiles').update(updates).eq('id', userId)
+
+  const { error } = await db.rpc('app_update_profile', {
+    p_token: appToken(),
+    p_profile_id: userId,
+    p_username: username,
+    p_full_name: fullName,
+    p_role: role,
+    p_is_active: target?.is_active !== false,
+  })
   if (error) { showAlert('eu-alert', error.message); return }
-  await logActivity('update', 'employee', userId, fullName || userId, { role, email_changed_to: updates.email || undefined })
+  await logActivity('update', 'employee', userId, fullName || userId, { role, username })
   toast('Employee updated')
   closeModal()
   await loadEmployees()
 }
 
-function openResetUserPasswordModal(userId) {
-  const u = allEmployees.find(x => x.id === userId)
-  if (!u || u.role === 'admin') return
-  openModal('Reset Employee Password', `
-    <div id="rp-alert" class="alert alert-error"></div>
-    <p class="text-sm text-muted" style="margin-bottom:12px;">Current passwords cannot be viewed. Set a new temporary password for <strong>${esc(u.full_name || u.email || userId)}</strong>.</p>
-    <div class="form-row cols-2">
-      <div class="form-group"><label>New Temporary Password *</label><input id="rp-pass" type="password" placeholder="At least 6 characters"></div>
-      <div class="form-group"><label>Confirm Password *</label><input id="rp-pass2" type="password" placeholder="Re-enter password"></div>
-    </div>
-    <div class="modal-footer" style="padding:0;margin-top:1rem;">
-      <button class="btn btn-secondary" onclick="openEditUserModal('${userId}')">Back</button>
-      <button class="btn btn-primary" id="rp-save-btn" onclick="saveResetUserPassword('${userId}')">Reset Password</button>
-    </div>
-  `)
-}
-
-async function saveResetUserPassword(userId) {
-  hideAlert('rp-alert')
-  const target = allEmployees.find(x => x.id === userId)
-  if (!target || target.role === 'admin') {
-    showAlert('rp-alert', 'Admin passwords cannot be reset from this screen')
-    return
-  }
-  const password = document.getElementById('rp-pass')?.value || ''
-  const confirm = document.getElementById('rp-pass2')?.value || ''
-  if (!password || password.length < 6) {
-    showAlert('rp-alert', 'Password must be at least 6 characters')
-    return
-  }
-  if (password !== confirm) {
-    showAlert('rp-alert', 'Passwords do not match')
-    return
-  }
-  disable('rp-save-btn')
-  try {
-    await adminUserAction('resetPassword', { userId, password })
-  } catch (error) {
-    disable('rp-save-btn', false)
-    showAlert('rp-alert', `${error.message}. Deploy supabase/functions/admin-users for secure employee management.`)
-    return
-  }
-  disable('rp-save-btn', false)
-  await logActivity('update', 'employee', userId, target.full_name || target.email || userId, { password_reset: true })
-  toast('Employee password reset')
-  closeModal()
-}
-
 function confirmDeleteUser(userId, label) {
+  if (!isAdmin()) { toast('Only admin can delete employee profiles', 'error'); return }
   label = decodeURIComponent(label)
   openModal('Delete Employee', `
     <div id="du-alert" class="alert alert-error"></div>
@@ -470,9 +482,10 @@ async function deleteUser(userId, label) {
   label = decodeURIComponent(label)
   disable('du-confirm-btn')
   try {
-    await adminUserAction('deleteUser', { userId })
+    const { error } = await db.rpc('app_delete_profile', { p_token: appToken(), p_profile_id: userId })
+    if (error) throw error
   } catch (error) {
-    showAlert('du-alert', `${error.message}. Deploy supabase/functions/admin-users for secure employee management.`)
+    showAlert('du-alert', error.message || 'Could not delete employee')
     disable('du-confirm-btn', false)
     return
   }
@@ -516,7 +529,7 @@ function renderCustomers() {
   let list = allCustomers
   if (q) {
     list = list.filter(c =>
-      `${c.name || ''} ${c.phone || ''} ${c.phone2 || ''} ${c.city || ''} ${c.state || ''} ${c.gstin || ''}`.toLowerCase().includes(q)
+      `${c.name || ''} ${c.contact_person || ''} ${c.phone || ''} ${c.phone2 || ''} ${c.email || ''} ${c.address || ''} ${c.city || ''} ${c.state || ''} ${c.pincode || ''} ${c.gstin || ''} ${c.notes || ''}`.toLowerCase().includes(q)
     )
   }
   text('cust-count', `Customers (${list.length} of ${allCustomers.length})`)
@@ -529,14 +542,16 @@ function renderCustomers() {
     return `<tr class="drill-row" style="cursor:pointer;" onclick="openCustomerProfile('${c.id}')">
       <td class="fw-600">${esc(c.name || 'Unnamed')}</td>
       <td class="text-muted">${esc(c.phone || '-')}<br><span class="text-xs">${esc(c.email || '')}</span></td>
-      <td class="text-muted">${esc([c.city, c.state].filter(Boolean).join(', ') || '-')}</td>
+      <td class="text-muted">${esc([c.city, c.state, c.pincode].filter(Boolean).join(', ') || '-')}</td>
       <td class="text-muted text-xs">${esc(c.gstin || '-')}</td>
       <td>${st.count} order${st.count !== 1 ? 's' : ''}</td>
       <td class="tr fw-600">${profileMoney(st.value)}</td>
       <td style="text-align:right;white-space:nowrap;" onclick="event.stopPropagation()">
         <button class="btn btn-ghost btn-sm" onclick="openCustomerProfile('${c.id}')" title="Open"><i class="fa-solid fa-folder-open"></i></button>
-        <button class="btn btn-ghost btn-sm" onclick="openEditCustomerModal('${c.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
-        <button class="btn btn-ghost btn-sm" style="color:#ef4444" onclick="confirmDeleteCustomer('${c.id}','${safeArg(c.name || '')}')" title="Delete"><i class="fa-solid fa-trash"></i></button>
+        ${isAdmin() ? `
+          <button class="btn btn-ghost btn-sm" onclick="openEditCustomerModal('${c.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
+          <button class="btn btn-ghost btn-sm" style="color:#ef4444" onclick="confirmDeleteCustomer('${c.id}','${safeArg(c.name || '')}')" title="Delete"><i class="fa-solid fa-trash"></i></button>
+        ` : ''}
       </td>
     </tr>`
   }).join(''))
@@ -597,7 +612,7 @@ function openCustomerProfile(id) {
       <div class="card-header">
         <div>
           <h2>${esc(c.name || 'Customer')}</h2>
-          <p class="text-muted text-sm">${esc([c.phone, c.email, c.city].filter(Boolean).join(' | '))}</p>
+          <p class="text-muted text-sm">${esc([c.phone, c.email, c.city, c.state, c.pincode].filter(Boolean).join(' | '))}</p>
         </div>
         <button class="btn btn-ghost btn-sm" onclick="closeCustomerProfile()"><i class="fa-solid fa-arrow-left"></i> Back to Customers</button>
       </div>
@@ -612,7 +627,8 @@ function openCustomerProfile(id) {
             <div><strong>Contact:</strong><br>${esc(c.contact_person || c.name || '-')}</div>
             <div><strong>Phone:</strong><br>${esc([c.phone, c.phone2].filter(Boolean).join(', ') || '-')}</div>
             <div><strong>Email:</strong><br>${esc(c.email || '-')}</div>
-            <div><strong>Address:</strong><br>${esc([c.address, c.city, c.state].filter(Boolean).join(', ') || '-')}</div>
+            <div><strong>Address:</strong><br>${esc([c.address, c.city, c.state, c.pincode].filter(Boolean).join(', ') || '-')}</div>
+            <div><strong>Notes:</strong><br>${esc(c.notes || '-')}</div>
           </div>
         </div>
         ${groupedOrders}
@@ -640,13 +656,14 @@ function customerFormValues() {
 }
 
 function openAddCustomerModal() {
+  if (!isAdmin()) { toast('Only admin can create profiles', 'error'); return }
   openModal('Add Customer', `<div id="cf-alert" class="alert alert-error"></div>${customerFormFields()}<div class="modal-footer" style="padding:0;margin-top:1rem;"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="cf-save-btn" onclick="saveNewCustomer()">Add Customer</button></div>`)
 }
 
 async function saveNewCustomer() {
   hideAlert('cf-alert')
   const vals = customerFormValues()
-  if (!vals.name) { showAlert('cf-alert', 'Name is required'); return }
+  if (!vals.name) vals.name = 'Unnamed Customer'
   disable('cf-save-btn')
   const { error } = await saveProfileRow('customers', vals, 'insert')
   if (error) { showAlert('cf-alert', error.message); disable('cf-save-btn', false); return }
@@ -656,6 +673,7 @@ async function saveNewCustomer() {
 }
 
 function openEditCustomerModal(id) {
+  if (!isAdmin()) { toast('Only admin can edit profiles', 'error'); return }
   const c = allCustomers.find(x => x.id === id)
   if (!c) return
   openModal('Edit Customer', `<div id="cf-alert" class="alert alert-error"></div>${customerFormFields(c)}<div class="modal-footer" style="padding:0;margin-top:1rem;"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="cf-save-btn" onclick="saveEditCustomer('${id}')">Save Changes</button></div>`)
@@ -664,7 +682,7 @@ function openEditCustomerModal(id) {
 async function saveEditCustomer(id) {
   hideAlert('cf-alert')
   const vals = customerFormValues()
-  if (!vals.name) { showAlert('cf-alert', 'Name is required'); return }
+  if (!vals.name) vals.name = allCustomers.find(c => c.id === id)?.name || 'Unnamed Customer'
   disable('cf-save-btn')
   const { error } = await saveProfileRow('customers', { ...vals, updated_at: new Date().toISOString() }, 'update', id)
   if (error) { showAlert('cf-alert', error.message); disable('cf-save-btn', false); return }
@@ -675,6 +693,7 @@ async function saveEditCustomer(id) {
 }
 
 function confirmDeleteCustomer(id, label) {
+  if (!isAdmin()) { toast('Only admin can delete profiles', 'error'); return }
   label = decodeURIComponent(label)
   openModal('Delete Customer', `<div id="dc-alert" class="alert alert-error"></div><p>Delete <strong>${esc(label)}</strong>?</p><p class="text-sm text-muted">Orders remain for accounting history.</p><div class="modal-footer" style="padding:0;margin-top:1.5rem;"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" style="background:#ef4444;border-color:#ef4444" id="dc-btn" onclick="deleteCustomer('${id}','${safeArg(label)}')">Delete</button></div>`)
 }
@@ -690,10 +709,10 @@ async function deleteCustomer(id, label) {
 }
 
 function exportCustomersExcel() {
-  const rows = [['Name','Contact','Phone','Email','City','State','GSTIN','Orders','Order Value']]
+  const rows = [['Name','Contact','Phone','Alternate Phone','Email','GSTIN','Address','City','State','Pincode','Notes','Orders','Order Value']]
   allCustomers.forEach(c => {
     const st = customerStats[c.id] || { count: 0, value: 0 }
-    rows.push([c.name, c.contact_person || '', c.phone || '', c.email || '', c.city || '', c.state || '', c.gstin || '', st.count, st.value])
+    rows.push([c.name, c.contact_person || '', c.phone || '', c.phone2 || '', c.email || '', c.gstin || '', c.address || '', c.city || '', c.state || '', c.pincode || '', c.notes || '', st.count, st.value])
   })
   const ok = exportWorkbook([
     { name: 'Customers', rows, cols: rows[0].map(() => ({ wch: 20 })) },
@@ -770,10 +789,10 @@ function renderSuppliers() {
       <td class="tr fw-600">${profileMoney(st.value)}</td>
       <td style="text-align:right;white-space:nowrap;" onclick="event.stopPropagation()">
         <button class="btn btn-ghost btn-sm" onclick="openSupplierProfile('${safeArg(s.name)}')" title="Open"><i class="fa-solid fa-folder-open"></i></button>
-        ${s.id ? `
+        ${s.id && isAdmin() ? `
           <button class="btn btn-ghost btn-sm" onclick="openEditSupplierModal('${s.id}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
           <button class="btn btn-ghost btn-sm" style="color:#ef4444" onclick="confirmDeleteSupplier('${s.id}','${safeArg(s.name)}')" title="Delete"><i class="fa-solid fa-trash"></i></button>
-        ` : `<button class="btn btn-ghost btn-sm" onclick="openAddSupplierModal('${safeArg(s.name)}')" title="Create profile"><i class="fa-solid fa-address-card"></i></button>`}
+        ` : s.id ? '' : isAdmin() ? `<button class="btn btn-ghost btn-sm" onclick="openAddSupplierModal('${safeArg(s.name)}')" title="Create profile"><i class="fa-solid fa-address-card"></i></button>` : ''}
       </td>
     </tr>`
   }).join(''))
@@ -929,6 +948,7 @@ async function deleteProfileRow(table, id) {
 }
 
 function openAddSupplierModal(prefillName = '') {
+  if (!isAdmin()) { toast('Only admin can create profiles', 'error'); return }
   prefillName = prefillName ? decodeURIComponent(prefillName) : ''
   if (!supplierTableReady) {
     openModal('Supplier Profiles Need Migration', `<p>Run <code>supabase/migrations/006_fix_profile_optional_fields_and_rls.sql</code> in Supabase first, then reload this page.</p>`)
@@ -950,6 +970,7 @@ async function saveNewSupplier() {
 }
 
 function openEditSupplierModal(id) {
+  if (!isAdmin()) { toast('Only admin can edit profiles', 'error'); return }
   const s = allSuppliers.find(x => x.id === id)
   if (!s) return
   openModal('Edit Supplier', `<div id="sf-alert" class="alert alert-error"></div>${supplierFormFields(s)}<div class="modal-footer" style="padding:0;margin-top:1rem;"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="sf-save-btn" onclick="saveEditSupplier('${id}')">Save Changes</button></div>`)
@@ -969,6 +990,7 @@ async function saveEditSupplier(id) {
 }
 
 function confirmDeleteSupplier(id, encodedName) {
+  if (!isAdmin()) { toast('Only admin can delete profiles', 'error'); return }
   const name = decodeURIComponent(encodedName)
   openModal('Delete Supplier', `
     <div id="ds-alert" class="alert alert-error"></div>

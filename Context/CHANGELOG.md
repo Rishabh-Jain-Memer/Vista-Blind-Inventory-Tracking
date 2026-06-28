@@ -1,5 +1,164 @@
 # Changelog
 
+## 2026-06-28 - UI Polish And Dev Environment Cleanup
+
+- Removed the browser-facing dev-environment/staging switch now that this clone already uses the isolated New Supabase project.
+- Deleted `dev-environment.html`, `STAGING_SETUP.md`, and the old staging restore helper scripts.
+- Simplified `js/config.js` so browser pages always use `knawjdrsdqgyfzqzddix`.
+- Refined the Admin Test Mode UI on Profiles and Settings with shared `css/style.css` classes, clearer status text, and consistent card layout.
+- Added a responsive Profiles tab strip so Employees, Customers, and Suppliers do not clip on phone-width screens.
+- Updated README and Context handoff docs so future work does not expect the removed dev-environment page or localStorage Supabase switching.
+
+## 2026-06-24 - App Username Login And Temporary Full Role Visibility
+
+- Replaced browser Supabase Auth login usage with database-backed username/password login.
+- Added `011_app_level_username_auth.sql` with `profiles.username`, password hashes, `app_sessions`, and RPCs for login, logout, admin profile creation/edit/delete, own profile update, and current-password-verified password changes.
+- Updated `login.html` / `js/login.js` to use plain username and password instead of email/password.
+- Updated `js/auth.js` so protected pages use the app session token from local storage.
+- Gave all roles full website sidebar/page visibility for now; access reduction can be added later one role at a time.
+- Kept profile creation/mutation admin-gated in the Profiles UI and profile RPCs.
+- Updated personal Settings so users must enter current password plus matching new password fields before changing password.
+
+## 2026-06-24 - New Project Manual-Entry Reset
+
+- Wiped the linked New Supabase project again so catalog, CRM, inventory, RRP, wastage, activity, supplier, customer, order, ticket, master, mechanism, and import-helper tables are empty for manual website entry.
+- Preserved the schema/framework, functions, triggers, RLS, frontend files, and the single admin Auth/profile user `rishabhmjain2006@gmail.com`.
+- Reset public sequences, including `order_ticket_number_seq`, so new manual tickets and records start cleanly.
+- Confirmed all public app tables except `profiles` have zero rows, and `profiles` / `auth.users` each contain only the preserved admin account.
+
+## 2026-06-24 - Vista Inflow Rishi Master Structure Import
+
+- Added `010_import_vista_inflow_rishi_masters.sql` for the new `Excel File/Vista-Inflow Data to Rishi.xlsx` workbook.
+- Parsed the workbook as structure-only source data and deduplicated repeated RM/FG/inventory rows into masters.
+- Imported fabric hierarchy under Fabrics for Roller Blind, Sheer Dimout, and S-Contour, including patterns like `Roller Blind > Screen Classic > 1% > 111 White`.
+- Imported separate Parts, Tracks, and Motors master pages so operational parts and track/motor labels do not mix into fabric combinations.
+- Kept this import free of stock quantities, rates, rolls, movements, and RRP values.
+
+## 2026-06-24 - Roles And Quotation Approval Workflow
+
+- Added the four active app roles: `admin`, `management`, `sales`, and `executer`.
+- Restricted customer/profile writes to Admin in both UI flow and database policy; non-admin roles can still create tickets and operational records.
+- Changed tickets to the three-state CRM model: `active`, `confirmed`, and `cancelled`.
+- Changed ticket handoff wording from Create Order to Generate Quotation.
+- Generated quotations now create `orders.status = quotation`, remain linked from Tickets, and are hidden from the Orders list until customer confirmation.
+- Customer-confirmed quotations move into Orders as `active`.
+- Added management approval fields and RPCs so proforma generation is gated by Admin/Management approval.
+- Quote output omits GST and bank details; approved proforma output includes GST and bank details.
+- Stock is no longer checked at quotation creation. After approval, staff choose either in-house processing or direct order to Vista.
+
+## 2026-06-24 - New Project Data Wipe
+
+- Wiped the linked New Supabase project `knawjdrsdqgyfzqzddix` for a fresh manual setup.
+- Cleared app/business/import data from orders, tickets, customers, inventory, masters, mechanisms, RRP, recipes, stock orders, suppliers, wastage, activity logs, and Excel import helper tables.
+- Preserved the database schema, RLS, functions, triggers, and frontend framework.
+- Removed all other Auth users and profiles, leaving only `rishabhmjain2006@gmail.com` / `Rishabh Jain` as admin.
+- Reset `order_ticket_number_seq` so the next ticket starts from a clean sequence.
+- Verified key app tables are empty and `public.profiles` / `auth.users` each contain only the preserved admin user.
+
+## 2026-06-21 - Inventory Sync Memory Guard
+
+- Fixed Masters `Sync Inventory` out-of-memory behavior caused by cartesian-combining unrelated branches.
+- Grouped/cartesian sync now only runs when all direct root branches with children are skipped dimension labels.
+- Added a 5,000 item sync safety limit and bounded name walkers so oversized structures stop with a clear error instead of exhausting memory.
+
+## 2026-06-21 - Masters Internal Tabs
+
+- Split `masters.html` into two internal tabs:
+  - Master Structure
+  - Mechanisms
+- Hid the Master Structure actions when the Mechanisms tab is active so both workflows no longer appear together on the same page.
+- Persisted the selected Masters tab in browser local storage.
+
+## 2026-06-21 - Inflow Color/Code Master Seeds
+
+- Updated `003_master_nodes_structure.sql` to seed color/code sub masters from `Excel File/Vista Inventory Inflow New.xlsx`.
+- Added 255 structure-only color/code paths across Roller, Sheer Dimout, and S-Contour fabric families.
+- Nested those values under a skipped `Color` label so final generated names can include the actual color/code without adding the word `Color`.
+- Kept the import structure-only: no stock quantities, rates, rolls, or movement rows are created.
+
+## 2026-06-21 - Mechanism Groups And Excel-Derived Master Seeds
+
+- Expanded `003_master_nodes_structure.sql` to include separate mechanism tables:
+  - `mechanism_groups`
+  - `mechanism_options`
+  - `master_mechanism_groups`
+- Seeded first-pass master category structure from `Excel File/Vista Dealer RRP April 2026.xlsx`.
+- Seeded mechanism labels from the RRP workbook and `Excel File/Vista Inventory Inflow New.xlsx`, including headrail, cassette, mono mechanism, and laddertape mechanism options.
+- Added a Mechanisms section to `masters.html` / `js/masters.js` for creating, editing, deleting, and assigning mechanism groups to selected masters.
+- Kept mechanism setup separate from generated master combinations and kept inventory sync limited to zero-stock catalog rows only.
+- Added a disabled/syncing state to the Masters `Sync Inventory` button for clearer feedback.
+
+## 2026-06-20 - Masters Edit And Delete Actions
+
+- Added edit action for each master/sub master row.
+- Added delete action for each master/sub master row.
+- Delete removes the selected `master_nodes` branch and nested sub masters only; already-synced inventory rows are left untouched.
+
+## 2026-06-20 - Masters To Inventory Sync
+
+- Added `Sync Inventory` back to the Masters page.
+- Sync generates final item names from the master tree and skips labels marked `exclude_from_pnc_name`.
+- Sync writes only zero-stock catalog rows:
+  - `inv_categories`
+  - `inv_products`
+  - `inv_variants`
+- Sync does not write rolls, quantities, rates, or movement/report rows.
+
+## 2026-06-20 - Masters Exclude Label And Compact Layout
+
+- Added `exclude_from_pnc_name` to `master_nodes` through `003_master_nodes_structure.sql`.
+- Added a compact include/skip toggle on each Masters row so labels like `Color` can be skipped later when final names are generated.
+- Tightened the Masters UI by replacing large stat cards with a slim summary and reducing row/body spacing.
+- Kept Masters structure-only: no generated combinations are displayed.
+
+## 2026-06-20 - Single Three-Step Supabase Migration Lane
+
+- Removed the old active migration SQL files from `supabase/migrations`.
+- Removed the separate `supabase/setup` SQL lane.
+- Added the setup SQL into `supabase/migrations` as the new canonical sequence:
+  - `001_new_project_empty_schema.sql`
+  - `002_link_first_admin_profile.sql`
+  - `003_master_nodes_structure.sql`
+- Updated docs and the Masters setup warning to reference `003_master_nodes_structure.sql` instead of the old `036` migration.
+
+## 2026-06-20 - Masters Structure-Only Correction
+
+- Reworked `masters.html` / `js/masters.js` so Masters only manages main masters and nested sub masters.
+- Added migration `003_master_nodes_structure.sql` for the `master_nodes` hierarchy table.
+- Removed the earlier Masters inventory-combination behavior from the active implementation:
+  - no pieces
+  - no rates
+  - no quantities
+  - no generated combinations
+  - no writes to `inv_categories`, `inv_products`, `inv_variants`, `inv_rolls`, or `inv_movements`
+- Updated README and Context docs so future work keeps Masters separate from inventory.
+
+## 2026-06-20 - Website Surface Cleanup And Neutral Masters
+
+- Removed standalone website pages/controllers for RRP, Wastage, Components, and Activity Log:
+  - `rrp.html`, `js/rrp.js`
+  - `wastage.html`, `js/wastage.js`
+  - `recipes.html`, `js/recipes.js`
+  - `activity-log.html`, `js/activity-log.js`
+- Removed those pages plus standalone Tickets from sidebar routing in `js/sidebar.js`.
+- Merged Tickets into Create as a third tab:
+  - `create.html` now has Create Purchase Order, Create Sales Order, and Tickets tabs.
+  - `tickets.html` supports `?embed=1` and skips its own sidebar in embed mode.
+  - `js/create.js` handles ticket iframe height messages and ticket-to-order conversion messages.
+- Removed Inventory > Finished Product Code UI and deleted its active startup/controller path from `js/inventory.js`.
+- Updated Masters so main masters are neutral groups, not Fabric/Parts/Finished Goods types. This was later corrected on the same date to use `master_nodes` instead of inventory catalog tables.
+- Removed the Profiles employee detail link to the deleted Activity Log page.
+- Updated README and Context docs for the new website structure.
+
+## 2026-06-20 - Superseded Masters Combination Prototype
+
+- Added admin route `masters.html` with controller `js/masters.js`.
+- Added the `Masters` sidebar tab before Inventory for admin users.
+- This first prototype used inventory catalog tables and generated combinations. It is no longer the active direction.
+- The active direction is the `master_nodes` structure-only flow documented above.
+- Inventory now points its header `Masters` button to `masters.html`; stock receiving remains in the Create Purchase Order / stock-order-detail flow.
+- Added master-tree styling in `css/style.css`.
+
 ## 2026-06-20 - Isolated Supabase Project Wiring
 
 - Wired `js/config.js` to the isolated Supabase project `knawjdrsdqgyfzqzddix` using the public publishable key.
@@ -225,3 +384,16 @@ Do not reintroduce old migration chains or one-off import scripts unless we inte
 20. `supabase/migrations/020_order_item_input_measurements.sql`
 21. `supabase/migrations/021_import_vertical_blinds_stock.sql`
 22. `supabase/migrations/022_refresh_vertical_blinds_stock_rates.sql`
+# 2026-06-28 - Inventory Filters, Mechanism Parts, Test Mode
+
+- Refreshed context handoff docs after the mechanism/test-mode work:
+  - updated architecture, current state, codebase map, AI guardrails, and AI rules
+  - added `Context/SUPABASE_STATUS.md` with the linked project, CLI limitations, and manual SQL rule
+  - updated `Context/SESSION_HANDOFF_2026-06-28.md` so the next session starts from current facts
+- Added `015_mechanism_part_links_anon_permissions.sql` after the first 014 run exposed that the browser app needs anon grants/RLS on `mechanism_part_links`.
+- Updated Inventory filters to follow Masters: master page first, then main master inside the selected page.
+- Kept Inventory search broad across variant/product/category, linked master/page names, roll/batch/bill/supplier fields, and cut pieces.
+- Added `supabase/migrations/014_mechanism_part_links.sql` with `mechanism_part_links` for scalable mechanism-to-inventory-part BOM setup.
+- Extended Masters > Mechanisms so each mechanism option can link inventory parts with quantity rules, wastage, units, and notes.
+- Updated Create Order to include mechanism-linked parts in planned `order_components` and to calculate `orders.cost_amount` as fabric cost plus linked parts/components.
+- Added `js/test-mode.js` plus admin-only controls in the visible Settings page and Profiles. Test mode captures browser writes locally and clears them when turned off so admins can test workflows without changing Supabase data.

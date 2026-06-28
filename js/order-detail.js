@@ -46,7 +46,7 @@ let executerProfiles = []
 let supportsExecutorAssignment = true
 
 function isSalesRole() {
-  return currentProfile?.role === 'sales'
+  return false
 }
 
 function canViewMoney() {
@@ -54,18 +54,22 @@ function canViewMoney() {
 }
 
 function canViewSalesTotals() {
-  return ['admin', 'sales'].includes(currentProfile?.role)
+  return true
 }
 
 function canAssignSalesOrder() {
-  return isSalesRole()
-    && ['inquiry', 'processing'].includes(orderStatus(currentOrder))
+  return true
+    && ['active', 'approved', 'processing'].includes(orderStatus(currentOrder))
 }
 
 function canEditCurrentOrder() {
-  return ['admin', 'sales'].includes(currentProfile?.role)
+  return true
     && !currentOrder?.deleted_at
     && !['executed', 'completed'].includes(orderStatus(currentOrder))
+}
+
+function canApproveProforma() {
+  return true
 }
 
 async function fetchOrderComponentsWithVariants(orderId) {
@@ -249,7 +253,7 @@ async function fetchOrderComponentsForCost(orderId) {
 
 function orderStatus(o = currentOrder) {
   const s = String(o?.status || '').toLowerCase()
-  if (s === 'discussing' || s === 'pending') return 'inquiry'
+  if (s === 'discussing' || s === 'pending' || s === 'inquiry') return 'active'
   if (s === 'in progress') return 'processing'
   return s
 }
@@ -276,6 +280,51 @@ function editVariantAvailableQty(v) {
     .filter(r => r.status === 'in_stock')
     .reduce((s, r) => s + Number(r.remaining_length || 0), 0)
 */
+}
+
+function isFabricOrderCategory(category) {
+  const group = String(category?.sub_group || '').trim().toLowerCase()
+  const name = String(category?.name || '').toLowerCase()
+  return group === 'fabric' || name.includes('fabric')
+}
+
+function isRawMaterialEditVariant(v) {
+  return !isFinishedGoodVariantForEdit(v)
+    && !isFabricOrderCategory(v?.category)
+    && editVariantAvailableQty(v) > 0
+}
+
+function comparableUnit(unit) {
+  const u = String(unit || '').toLowerCase()
+  if (['metre', 'meter', 'meters', 'metres', 'mtr', 'mt'].includes(u)) return 'm'
+  if (['feet', 'foot'].includes(u)) return 'ft'
+  if (['nos', 'no', 'piece', 'pieces'].includes(u)) return 'pcs'
+  return u || 'pcs'
+}
+
+function qtyInVariantUnit(qty, fromUnit, variantUnit) {
+  const from = comparableUnit(fromUnit)
+  const to = comparableUnit(variantUnit)
+  if (from === to) return Number(qty || 0)
+  const lengthUnits = new Set(['m', 'ft', 'cm', 'in'])
+  if (lengthUnits.has(from) && lengthUnits.has(to)) return cvtUnit(Number(qty || 0), from, to)
+  return Number(qty || 0)
+}
+
+function requireEditStock(itemLabel, available, needed, unit) {
+  if (!Number.isFinite(needed) || needed <= 0) return
+  if (!Number.isFinite(available) || available < needed) {
+    throw new Error(`${itemLabel}: insufficient stock. Need ${needed.toFixed(3)} ${unit}, available ${Math.max(available || 0, 0).toFixed(3)} ${unit}.`)
+  }
+}
+
+function requireVariantStockForEdit(itemLabel, variantId, needed, fromUnit) {
+  const variant = (editData?.variants || []).find(v => v.id === variantId)
+  if (!variant) throw new Error(`${itemLabel}: linked inventory item was not found.`)
+  const variantUnit = variant.unit || fromUnit || 'pcs'
+  const neededInVariantUnit = qtyInVariantUnit(needed, fromUnit || variantUnit, variantUnit)
+  requireEditStock(itemLabel, editVariantAvailableQty(variant), neededInVariantUnit, variantUnit)
+  return variant
 }
 
 function buildEditDirectItems() {
@@ -449,10 +498,10 @@ async function init() {
     try {
       const { data: assignedProfile } = await db
         .from('profiles')
-        .select('id, full_name, email')
+        .select('id, full_name, username')
         .eq('id', currentOrder.assigned_executor_id)
         .maybeSingle()
-      currentOrder._assignedExecutorName = assignedProfile?.full_name || assignedProfile?.email || null
+      currentOrder._assignedExecutorName = assignedProfile?.full_name || assignedProfile?.username || null
     } catch (_) {
       supportsExecutorAssignment = false
     }
@@ -487,7 +536,7 @@ async function init() {
 // ── Header ───────────────────────────────────────────────────────────────────
 function renderHeader() {
   const uid = currentOrder.order_uid || currentOrder.id.substring(0,8).toUpperCase()
-  text('order-title', `Order #${uid}`)
+  text('order-title', `${orderStatus() === 'quotation' ? 'Quotation' : 'Order'} #${uid}`)
   html('order-badge', badge(orderStatus()))
   html('order-uid-badge', currentOrder.order_uid ? `<i class="fa-solid fa-hashtag" style="font-size:11px;"></i> ${esc(currentOrder.order_uid)}` : '')
 }
@@ -507,6 +556,48 @@ function renderActions() {
 
   const btns = []
 
+  if (!isDeleted) {
+    btns.push(`
+      <button class="btn btn-secondary" onclick="openQuoteEditor('quote')">
+        <i class="fa-solid fa-file-lines"></i> Generate Quote
+      </button>`)
+  }
+
+  if (!isDeleted && status === 'active' && canEditCurrentOrder()) {
+    if (currentOrder.approval_status === 'pending_management') {
+      btns.push(`<span class="badge badge-warning" style="align-self:center;">Management approval pending</span>`)
+    } else if (currentOrder.approval_status !== 'approved') {
+      btns.push(`
+        <button class="btn btn-primary" onclick="requestManagementApproval()">
+          <i class="fa-solid fa-user-check"></i> Request Proforma Approval
+        </button>`)
+    }
+  }
+
+  if (!isDeleted && currentOrder.approval_status === 'pending_management' && canApproveProforma()) {
+    btns.push(`
+      <button class="btn btn-primary" onclick="approveCurrentOrderProforma()">
+        <i class="fa-solid fa-check-double"></i> Approve Proforma
+      </button>`)
+  }
+
+  if (!isDeleted && currentOrder.approval_status === 'approved') {
+    btns.push(`
+      <button class="btn btn-secondary" onclick="openQuoteEditor('proforma')">
+        <i class="fa-solid fa-file-invoice"></i> Generate Proforma
+      </button>`)
+  }
+
+  if (!isDeleted && ['approved', 'active'].includes(status) && currentOrder.approval_status === 'approved' && canEditCurrentOrder()) {
+    btns.push(`
+      <button class="btn btn-primary" onclick="markStockDecision('in_house')">
+        <i class="fa-solid fa-boxes-stacked"></i> Stock Available
+      </button>
+      <button class="btn btn-secondary" onclick="markStockDecision('direct_order')">
+        <i class="fa-solid fa-truck-fast"></i> Direct Order
+      </button>`)
+  }
+
   // Execute button — shown when Processing and user can execute
   if (canExec && status === 'processing') {
     const allDeducted = currentItems.every(i => i.fabric_deducted)
@@ -523,8 +614,8 @@ function renderActions() {
   // Status change dropdown for admin/staff
   if (role === 'admin' && !isDeleted && status !== 'completed') {
     const opts = []
-    if (status === 'inquiry') opts.push(`<option value="processing">Move to Processing</option>`)
-    if (status === 'processing') opts.push(`<option value="inquiry">Back to Inquiry</option>`)
+    if (status === 'active') opts.push(`<option value="processing">Move to Processing</option>`)
+    if (status === 'processing') opts.push(`<option value="active">Back to Active</option>`)
     if (status === 'executed') opts.push(`<option value="completed">Mark as Completed</option>`)
     if (opts.length) {
       btns.push(`
@@ -539,6 +630,13 @@ function renderActions() {
     btns.push(`
       <button class="btn btn-secondary" onclick="assignExecuterToCurrentOrder()">
         <i class="fa-solid fa-user-check"></i> Assign Executer
+      </button>`)
+  }
+
+  if (canEditCurrentOrder() && !['cancelled', 'completed', 'executed'].includes(status)) {
+    btns.push(`
+      <button class="btn btn-secondary" onclick="cancelCurrentOrder()" style="border-color:#fecaca;color:#b91c1c;">
+        <i class="fa-solid fa-ban"></i> Cancel Order
       </button>`)
   }
 
@@ -557,6 +655,85 @@ function renderActions() {
   }
 
   html('admin-actions', btns.join(''))
+}
+
+async function cancelCurrentOrder() {
+  if (!currentOrderId || !canEditCurrentOrder()) return
+  const status = orderStatus(currentOrder)
+  if (['executed', 'completed', 'cancelled'].includes(status)) {
+    toast('This order cannot be cancelled from here.', 'error')
+    return
+  }
+  const label = currentOrder.order_uid || `#${currentOrderId.substring(0, 8)}`
+  if (!confirm(`Cancel order ${label}?\n\nUse this when the customer denies or no longer wants to buy.`)) return
+
+  const updates = {
+    status: 'cancelled',
+    assigned_executor_id: null,
+    assigned_at: null,
+    assigned_by: null,
+  }
+  let { error } = await db.from('orders').update(updates).eq('id', currentOrderId)
+  if (error && /assigned_executor_id|assigned_at|assigned_by/i.test(error.message || '')) {
+    delete updates.assigned_executor_id
+    delete updates.assigned_at
+    delete updates.assigned_by
+    ;({ error } = await db.from('orders').update(updates).eq('id', currentOrderId))
+  }
+  if (error) {
+    toast(error.message, 'error')
+    return
+  }
+  await logActivity('cancel', 'order', currentOrderId, label, { status: { old: currentOrder?.status, new: 'cancelled' } })
+  toast('Order cancelled')
+  setTimeout(() => window.location.reload(), 800)
+}
+
+async function requestManagementApproval() {
+  if (!currentOrderId || !canEditCurrentOrder()) return
+  if (!confirm('Send this order for management approval before proforma generation?')) return
+  const { error } = await db.from('orders').update({
+    approval_status: 'pending_management',
+    approval_requested_at: new Date().toISOString(),
+    approval_requested_by: currentProfile?.id || null,
+  }).eq('id', currentOrderId)
+  if (error) {
+    toast(error.message, 'error')
+    return
+  }
+  await logActivity('approval_request', 'order', currentOrderId, currentOrder.order_uid || currentOrderId)
+  toast('Approval requested')
+  setTimeout(() => window.location.reload(), 600)
+}
+
+async function approveCurrentOrderProforma() {
+  if (!currentOrderId || !canApproveProforma()) return
+  if (!confirm('Approve proforma invoice generation for this order?')) return
+  const { error } = await db.rpc('approve_order_proforma', { p_order_id: currentOrderId })
+  if (error) {
+    toast(error.message, 'error')
+    return
+  }
+  await logActivity('approve', 'order', currentOrderId, currentOrder.order_uid || currentOrderId, { approval_status: 'approved' })
+  toast('Proforma approved')
+  setTimeout(() => window.location.reload(), 600)
+}
+
+async function markStockDecision(mode) {
+  if (!currentOrderId || !canEditCurrentOrder()) return
+  const label = mode === 'direct_order' ? 'direct order to Vista' : 'in-house processing'
+  if (!confirm(`Mark this order for ${label}?`)) return
+  const { error } = await db.rpc('mark_order_stock_decision', {
+    p_order_id: currentOrderId,
+    p_fulfilment_mode: mode,
+  })
+  if (error) {
+    toast(error.message, 'error')
+    return
+  }
+  await logActivity('stock_decision', 'order', currentOrderId, currentOrder.order_uid || currentOrderId, { fulfilment_mode: mode })
+  toast(mode === 'direct_order' ? 'Order marked as direct order' : 'Order moved to processing')
+  setTimeout(() => window.location.reload(), 600)
 }
 
 function updateQuoteDownloadsButton() {
@@ -585,6 +762,14 @@ function renderInfo() {
     <div>
       <div class="info-label">Source</div>
       <div class="info-value">${esc(sourceLabel(o.source))}</div>
+    </div>
+    <div>
+      <div class="info-label">Approval</div>
+      <div class="info-value">${esc((o.approval_status || 'not_requested').replace(/_/g, ' '))}</div>
+    </div>
+    <div>
+      <div class="info-label">Fulfilment</div>
+      <div class="info-value">${esc((o.fulfilment_mode || 'stock_pending').replace(/_/g, ' '))}</div>
     </div>
     ${canViewSalesTotals() ? `<div>
       <div class="info-label">Grand Total</div>
@@ -1379,7 +1564,7 @@ async function reverseExecutedInventory(orderId) {
 
 function openRollbackOrder() {
   const status = orderStatus(currentOrder)
-  const target = status === 'processing' ? 'inquiry' : 'processing'
+  const target = status === 'processing' ? 'active' : 'processing'
   openModal('Roll Back Order', `
     <div id="rollback-alert" class="alert alert-error"></div>
     <p class="text-sm text-muted" style="margin-bottom:12px;">
@@ -1407,9 +1592,9 @@ async function rollbackOrder(targetStatus) {
       status: targetStatus,
       total_amount: computeOrderRevenueFromItems(currentItems),
       cost_amount: 0,
-      assigned_executor_id: targetStatus === 'inquiry' ? null : currentOrder.assigned_executor_id,
-      assigned_at: targetStatus === 'inquiry' ? null : currentOrder.assigned_at,
-      assigned_by: targetStatus === 'inquiry' ? null : currentOrder.assigned_by,
+      assigned_executor_id: targetStatus === 'active' ? null : currentOrder.assigned_executor_id,
+      assigned_at: targetStatus === 'active' ? null : currentOrder.assigned_at,
+      assigned_by: targetStatus === 'active' ? null : currentOrder.assigned_by,
       executed_by: null,
       executed_at: null,
     }
@@ -1533,7 +1718,7 @@ async function updateStatus(sel) {
     }
   }
 
-  if (supportsExecutorAssignment && status === 'inquiry' && orderStatus(currentOrder) === 'processing') {
+  if (supportsExecutorAssignment && status === 'active' && orderStatus(currentOrder) === 'processing') {
     updates.assigned_executor_id = null
     updates.assigned_at = null
     updates.assigned_by = null
@@ -1566,7 +1751,7 @@ async function loadExecuterProfiles() {
   if (executerProfiles.length) return executerProfiles
   const { data, error } = await db
     .from('profiles')
-    .select('id, full_name, email, role')
+    .select('id, full_name, username, role')
     .eq('role', 'executer')
     .order('full_name')
   if (error) throw error
@@ -1585,7 +1770,7 @@ async function promptAssignExecuter() {
     window._assignExecuterResolve = resolve
     const options = executers.map(ex => `
       <option value="${ex.id}" ${ex.id === currentOrder?.assigned_executor_id ? 'selected' : ''}>
-        ${esc(ex.full_name || ex.email || ex.id)}
+        ${esc(ex.full_name || ex.username || ex.id)}
       </option>
     `).join('')
 
@@ -1633,7 +1818,7 @@ async function assignExecuterToCurrentOrder() {
   try {
     const assignedExecutorId = await promptAssignExecuter()
     if (!assignedExecutorId) return
-    const shouldMoveToProcessing = orderStatus(currentOrder) === 'inquiry'
+    const shouldMoveToProcessing = orderStatus(currentOrder) === 'active'
     if (shouldMoveToProcessing) await ensureOrderComponents(currentOrderId)
     const updates = {
       assigned_executor_id: assignedExecutorId,
@@ -1653,7 +1838,7 @@ async function assignExecuterToCurrentOrder() {
     }
     await logActivity('assign', 'order', currentOrderId, currentOrder.order_uid || currentOrderId, {
       assigned_executor_id: assignedExecutorId,
-      status: shouldMoveToProcessing ? { old: 'inquiry', new: 'processing' } : undefined,
+      status: shouldMoveToProcessing ? { old: 'active', new: 'processing' } : undefined,
     })
     toast(shouldMoveToProcessing ? 'Executer assigned and order moved to processing' : 'Executer assigned')
     setTimeout(() => window.location.reload(), 500)
@@ -2429,7 +2614,7 @@ function renderEditDirectItemOptions() {
 
 function onEditNewType(nid) {
   const type = document.getElementById(`eni-type-${nid}`)?.value || 'finished_goods'
-  ;['fg', 'rm', 'track', 'resale'].forEach(section => {
+  ;['fg', 'rm', 'track'].forEach(section => {
     const el = document.getElementById(`eni-${section}-section-${nid}`)
     if (el) el.style.display = 'none'
   })
@@ -2466,7 +2651,6 @@ function addEditNewItem() {
           <option value="finished_goods">Finished Goods</option>
           <option value="raw_material">Raw Material</option>
           <option value="track">Track</option>
-          <option value="resale">Direct Order</option>
         </select>
       </div>
     </div>
@@ -2513,7 +2697,7 @@ function addEditNewItem() {
           <label style="font-size:12px;">Variant</label>
           <select id="eni-rm-var-${nid}" onchange="recalcNewEditItem('${nid}')">
             <option value="">Select...</option>
-            ${renderEditVariantOptions(v => !isFinishedGoodVariantForEdit(v))}
+            ${renderEditVariantOptions(isRawMaterialEditVariant)}
           </select>
         </div>
         <div class="form-group" style="margin:0;">
@@ -2554,26 +2738,6 @@ function addEditNewItem() {
         </div>
       </div>
     </div>
-    <div id="eni-resale-section-${nid}" style="display:none;">
-      <div class="form-row cols-2" style="margin-bottom:8px;">
-        <div class="form-group" style="margin:0;">
-          <label style="font-size:12px;">Direct Item</label>
-          <select id="eni-resale-item-${nid}" onchange="recalcNewEditItem('${nid}')">
-            <option value="">Select...</option>
-            ${renderEditDirectItemOptions()}
-          </select>
-        </div>
-        <div class="form-group" style="margin:0;">
-          <label style="font-size:12px;">Rate</label>
-          <input id="eni-resale-rate-${nid}" type="number" min="0" step="0.01" oninput="recalcNewEditItem('${nid}')">
-        </div>
-      </div>
-      <div class="form-row cols-3" style="margin-bottom:8px;">
-        <div class="form-group" style="margin:0;"><label style="font-size:12px;">Qty</label><input id="eni-resale-q-${nid}" type="number" min="0.001" step="0.001" value="1" oninput="recalcNewEditItem('${nid}')"></div>
-        <div class="form-group" style="margin:0;"><label style="font-size:12px;">Width</label><div style="display:flex;gap:6px;"><input id="eni-resale-w-${nid}" type="number" min="0.01" step="0.001" placeholder="Optional" oninput="recalcNewEditItem('${nid}')"><select id="eni-resale-wu-${nid}" onchange="recalcNewEditItem('${nid}')">${DIM_UNITS.map(u => `<option value="${u}" ${u === 'cm' ? 'selected' : ''}>${u}</option>`).join('')}</select></div></div>
-        <div class="form-group" style="margin:0;"><label style="font-size:12px;">Height / Length</label><div style="display:flex;gap:6px;"><input id="eni-resale-h-${nid}" type="number" min="0.01" step="0.001" placeholder="Optional" oninput="recalcNewEditItem('${nid}')"><select id="eni-resale-hu-${nid}" onchange="recalcNewEditItem('${nid}')">${DIM_UNITS.map(u => `<option value="${u}" ${u === 'cm' ? 'selected' : ''}>${u}</option>`).join('')}</select></div></div>
-      </div>
-    </div>
   `
   wrap.appendChild(div)
 }
@@ -2595,7 +2759,7 @@ function onEditNewMainType(nid) {
   const catNames = BLIND_FABRIC_MAP[mainType] || []
   if (!catNames.length) { fabSel.innerHTML = '<option value="">No fabric needed</option>'; return }
   const vars = editData.variants.filter(v =>
-    !isHiddenOrderVariant(v) && catNames.some(name => categoryMatchesName(v.category, name))
+    !isHiddenOrderVariant(v) && editVariantAvailableQty(v) > 0 && catNames.some(name => categoryMatchesName(v.category, name))
   )
   fabSel.innerHTML = '<option value="">Select fabric…</option>' + vars.map(v => {
     const stockM = (v.rolls||[]).filter(r=>r.status==='in_stock').reduce((s,r)=>s+Number(r.remaining_length||0),0)
@@ -2624,23 +2788,6 @@ function recalcNewEditItem(nid) {
     const chargeableFt = lenRaw > 0 ? Math.ceil(cvtUnit(lenRaw, lenUnit, 'ft') * 2) / 2 : 0
     const sub = document.getElementById(`eni-calc-${nid}`)
     if (sub) sub.textContent = qty > 0 && chargeableFt > 0 ? `Chargeable: ${chargeableFt.toFixed(1)} ft · Total: ${fmt$(qty * rate)}` : ''
-    return
-  }
-  if (type === 'resale') {
-    const item = editData.directItems.find(x => x.key === document.getElementById(`eni-resale-item-${nid}`)?.value)
-    const qty = parseFloat(document.getElementById(`eni-resale-q-${nid}`)?.value) || 0
-    const rate = parseFloat(document.getElementById(`eni-resale-rate-${nid}`)?.value) || 0
-    const wRaw = parseFloat(document.getElementById(`eni-resale-w-${nid}`)?.value)
-    const hRaw = parseFloat(document.getElementById(`eni-resale-h-${nid}`)?.value)
-    const wUnit = document.getElementById(`eni-resale-wu-${nid}`)?.value || 'cm'
-    const hUnit = document.getElementById(`eni-resale-hu-${nid}`)?.value || 'cm'
-    const measure = editMeasuredBilling(qty, item?.unit || 'pcs', wRaw, hRaw, wUnit, hUnit)
-    const sub = document.getElementById(`eni-calc-${nid}`)
-    if (sub) {
-      sub.textContent = item && qty > 0 && rate > 0
-        ? `${measure.mode === 'qty' ? 'Qty' : 'Billing'}: ${measure.billQty.toFixed(3)} ${measure.labelUnit} - Total: ${fmt$(measure.billQty * rate)}`
-        : ''
-    }
     return
   }
   const fabOpt = document.querySelector(`#eni-fabric-${nid} option:checked`)
@@ -2824,6 +2971,7 @@ async function saveEditOrder() {
         const qty = parseFloat(document.getElementById(`eni-rm-q-${nid}`)?.value)
         const rate = parseFloat(document.getElementById(`eni-rm-rate-${nid}`)?.value) || parseFloat(opt?.dataset?.rate) || 0
         if (!varId || isNaN(qty) || qty <= 0 || rate <= 0) continue
+        requireVariantStockForEdit(`New raw material item ${opt?.dataset?.name || opt?.textContent || ''}`.trim(), varId, qty, opt?.dataset?.unit || 'pcs')
         const lineTotal = qty * rate
         newTotal += lineTotal
         const { error: rmErr } = await db.from('order_items').insert({
@@ -2842,41 +2990,6 @@ async function saveEditOrder() {
         continue
       }
 
-      if (editItemType === 'resale') {
-        const item = editData.directItems.find(x => x.key === document.getElementById(`eni-resale-item-${nid}`)?.value)
-        const qty = parseFloat(document.getElementById(`eni-resale-q-${nid}`)?.value)
-        const rate = parseFloat(document.getElementById(`eni-resale-rate-${nid}`)?.value)
-        const wRaw = parseFloat(document.getElementById(`eni-resale-w-${nid}`)?.value)
-        const hRaw = parseFloat(document.getElementById(`eni-resale-h-${nid}`)?.value)
-        const wUnit = document.getElementById(`eni-resale-wu-${nid}`)?.value || 'cm'
-        const hUnit = document.getElementById(`eni-resale-hu-${nid}`)?.value || 'cm'
-        if (!item || isNaN(qty) || qty <= 0 || isNaN(rate) || rate <= 0) continue
-        const measure = editMeasuredBilling(qty, item.unit, wRaw, hRaw, wUnit, hUnit)
-        const lineTotal = measure.billQty * rate
-        newTotal += lineTotal
-        const { error: resaleErr } = await db.from('order_items').insert({
-          order_id: currentOrderId,
-          variant_id: item.variantId || null,
-          fg_stock_id: item.fgStockId || null,
-          width_cm: measure.widthCm,
-          height_cm: measure.heightCm,
-          input_width_raw: measure.hasWidth ? wRaw : null,
-          input_width_unit: measure.hasWidth ? wUnit : null,
-          input_height_raw: measure.hasLength ? hRaw : null,
-          input_height_unit: measure.hasLength ? hUnit : null,
-          quantity: qty,
-          area_sqm: measure.areaSqm,
-          rate_applied: rate,
-          line_total: lineTotal,
-          item_type: 'resale',
-          sale_unit: measure.saleUnit,
-          product_name: item.name,
-          fabric_deducted: false,
-        })
-        if (resaleErr) throw resaleErr
-        continue
-      }
-
       if (editItemType === 'track') {
         const trackType = document.getElementById(`eni-track-type-${nid}`)?.value
         const qty = parseFloat(document.getElementById(`eni-track-q-${nid}`)?.value)
@@ -2887,6 +3000,28 @@ async function saveEditOrder() {
         const lengthFt = cvtUnit(lenRaw, lenUnit, 'ft')
         const chargeableFt = Math.ceil(lengthFt * 2) / 2
         const lineTotal = qty * rate
+        const recipe = findRecipeForBlindType(editData.recipes, trackType)
+        const componentSource = recipe?.recipe_items?.length
+          ? recipe.recipe_items.map(item => ({
+              name: item.inv_variants?.name,
+              variantId: item.variant_id || item.inv_variants?.id || null,
+              unit: item.inv_variants?.unit || 'pcs',
+              isWidthDependent: Boolean(item.is_width_dependent),
+              quantityPerUnit: Number(item.quantity_per_unit || 0),
+            }))
+          : (TRACK_RECIPES[trackType] || []).map(name => ({ name, variantId: null, unit: 'pcs', isWidthDependent: false, quantityPerUnit: 0 }))
+        const plannedComponents = componentSource.map((component, idx) => {
+          const matched = component.variantId
+            ? (editData.variants || []).find(v => v.id === component.variantId) || null
+            : resolveVariantForRecipeLabel(editData.variants || [], component.name)
+          const unit = idx === 0 ? 'ft' : (matched?.unit || component.unit || 'pcs')
+          const plannedQty = idx === 0
+            ? chargeableFt * qty
+            : (component.isWidthDependent ? chargeableFt * qty : (component.quantityPerUnit || 0) * qty)
+          if (!matched?.id) throw new Error(`New track item: ${component.name || 'component'} is not linked to inventory, so stock cannot be checked.`)
+          requireVariantStockForEdit(`New track item: ${component.name || matched.name}`, matched.id, plannedQty, unit)
+          return { component, matched, unit, plannedQty }
+        })
         newTotal += lineTotal
         const { data: oiRow, error: trkErr } = await db.from('order_items').insert({
           order_id: currentOrderId,
@@ -2905,23 +3040,13 @@ async function saveEditOrder() {
           fabric_deducted: false,
         }).select('id').single()
         if (trkErr) throw trkErr
-        const recipe = findRecipeForBlindType(editData.recipes, trackType)
-        const componentSource = recipe?.recipe_items?.length
-          ? recipe.recipe_items.map(item => ({
-              name: item.inv_variants?.name,
-              variantId: item.variant_id || item.inv_variants?.id || null,
-              unit: item.inv_variants?.unit || 'pcs',
-              isWidthDependent: Boolean(item.is_width_dependent),
-              quantityPerUnit: Number(item.quantity_per_unit || 0),
-            }))
-          : (TRACK_RECIPES[trackType] || []).map(name => ({ name, variantId: null, unit: 'pcs', isWidthDependent: false, quantityPerUnit: 0 }))
         const comps = componentSource.map((component, idx) => ({
           order_id: currentOrderId,
           order_item_id: oiRow.id,
-          variant_id: component.variantId || null,
-          component_name: component.variantId ? null : component.name,
-          planned_qty: idx === 0 ? chargeableFt * qty : (component.isWidthDependent ? chargeableFt * qty : (component.quantityPerUnit || 0) * qty),
-          unit: idx === 0 ? 'ft' : (component.unit || 'pcs'),
+          variant_id: plannedComponents[idx]?.matched?.id || null,
+          component_name: plannedComponents[idx]?.matched?.id ? null : component.name,
+          planned_qty: plannedComponents[idx]?.plannedQty || 0,
+          unit: plannedComponents[idx]?.unit || (idx === 0 ? 'ft' : (component.unit || 'pcs')),
           is_width_dependent: component.isWidthDependent,
           is_extra: false,
           deducted: false,
@@ -2944,6 +3069,18 @@ async function saveEditOrder() {
       const rollW  = parseFloat(fabOpt?.dataset?.width) || 0
       const area   = (w_cm/100) * (h_cm/100) * qty
       const lineTotal = area * rate
+      if (fabId && rollW > 0) {
+        requireVariantStockForEdit(`New finished goods fabric ${fabOpt?.textContent || ''}`.trim(), fabId, (h_cm / 100) * qty, 'm')
+      }
+
+      const recipe = findRecipeForBlindType(editData.recipes, subType)
+      if (recipe?.recipe_items?.length) {
+        for (const item of recipe.recipe_items) {
+          if (!item.variant_id) throw new Error(`New finished goods item: a component is not linked to inventory, so stock cannot be checked.`)
+          const plannedQty = item.is_width_dependent ? (w_cm / 100) * qty : item.quantity_per_unit * qty
+          requireVariantStockForEdit(`New finished goods component ${item.inv_variants?.name || ''}`.trim(), item.variant_id, plannedQty, item.inv_variants?.unit || 'pcs')
+        }
+      }
       newTotal += lineTotal
 
       const { data: oiRow, error: oiErr } = await db.from('order_items').insert({
@@ -2962,7 +3099,6 @@ async function saveEditOrder() {
       if (oiErr) throw oiErr
 
       // Insert components from recipe
-      const recipe = findRecipeForBlindType(editData.recipes, subType)
       if (recipe?.recipe_items?.length) {
         const comps = recipe.recipe_items.map(item => ({
           order_id:           currentOrderId,
@@ -3145,7 +3281,7 @@ async function renderFinancialSummary() {
 }
 
 function downloadOrderPDF() {
-  openQuoteEditor()
+  openQuoteEditor('quote')
 }
 
 function quoteInputDate(value) {
@@ -3322,12 +3458,18 @@ function renderQuoteLineEditor(row, idx) {
   </tr>`
 }
 
-function openQuoteEditor() {
+function openQuoteEditor(documentType = 'quote') {
   if (!currentOrder) return
+  const isProforma = documentType === 'proforma'
+  if (isProforma && currentOrder.approval_status !== 'approved') {
+    toast('Management approval is required before generating proforma.', 'error')
+    return
+  }
   const data = buildQuoteDefaults()
-  openModal(`Quote #${esc(currentOrder.order_uid || currentOrder.id.substring(0, 8).toUpperCase())}`, `
+  openModal(`${isProforma ? 'Proforma Invoice' : 'Quote'} #${esc(currentOrder.order_uid || currentOrder.id.substring(0, 8).toUpperCase())}`, `
+    <input type="hidden" id="quote-document-type" value="${esc(documentType)}">
     <div class="alert alert-info show" style="margin-bottom:14px;">
-      Review or adjust these fields before generating the customer quote. Generating saves this quote version to download history without changing production order items.
+      Review or adjust these fields before generating the customer ${isProforma ? 'proforma invoice' : 'quote'}. Generating saves this version to download history without changing production order items.
     </div>
     <div class="form-row cols-2">
       <div class="form-group"><label>PI / Quote No.</label><input id="quote-no" value="${esc(data.quoteNo)}"></div>
@@ -3362,18 +3504,21 @@ function openQuoteEditor() {
         <div class="form-group"><label>Delivery</label><input id="quote-term-delivery" value="${esc(data.terms.delivery)}"></div>
       </div>
       <div>
-        <div class="fw-600" style="margin-bottom:8px;">Totals &amp; Bank</div>
+        <div class="fw-600" style="margin-bottom:8px;">${isProforma ? 'Totals & Bank' : 'Totals'}</div>
+        <div style="${isProforma ? '' : 'display:none;'}">
         <div class="form-row cols-2">
           <div class="form-group"><label>CGST %</label><input id="quote-cgst-rate" type="number" min="0" step="0.01" value="${data.cgstRate}" oninput="updateQuoteEditorTotals()"></div>
           <div class="form-group"><label>SGST %</label><input id="quote-sgst-rate" type="number" min="0" step="0.01" value="${data.sgstRate}" oninput="updateQuoteEditorTotals()"></div>
         </div>
+        </div>
         <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:12px;background:#f8fafc;">
           <div style="display:flex;justify-content:space-between;"><span>Total SQM</span><strong id="quote-editor-total-sqm">0</strong></div>
           <div style="display:flex;justify-content:space-between;"><span>Total Amount</span><strong id="quote-editor-subtotal">0.00</strong></div>
-          <div style="display:flex;justify-content:space-between;"><span>CGST</span><strong id="quote-editor-cgst">0.00</strong></div>
-          <div style="display:flex;justify-content:space-between;"><span>SGST</span><strong id="quote-editor-sgst">0.00</strong></div>
+          <div style="${isProforma ? 'display:flex;justify-content:space-between;' : 'display:none;'}"><span>CGST</span><strong id="quote-editor-cgst">0.00</strong></div>
+          <div style="${isProforma ? 'display:flex;justify-content:space-between;' : 'display:none;'}"><span>SGST</span><strong id="quote-editor-sgst">0.00</strong></div>
           <div style="display:flex;justify-content:space-between;border-top:1px solid #e2e8f0;margin-top:6px;padding-top:6px;"><span>Final Amount</span><strong id="quote-editor-final">0.00</strong></div>
         </div>
+        <div style="${isProforma ? '' : 'display:none;'}">
         <div class="form-group"><label>A/c. Name</label><input id="quote-bank-account-name" value="${esc(data.bank.accountName)}"></div>
         <div class="form-group"><label>Bank Name</label><input id="quote-bank-name" value="${esc(data.bank.bankName)}"></div>
         <div class="form-group"><label>Branch</label><input id="quote-bank-branch" value="${esc(data.bank.branch)}"></div>
@@ -3381,11 +3526,12 @@ function openQuoteEditor() {
           <div class="form-group"><label>A/c No.</label><input id="quote-bank-account-no" value="${esc(data.bank.accountNo)}"></div>
           <div class="form-group"><label>IFSC</label><input id="quote-bank-ifsc" value="${esc(data.bank.ifsc)}"></div>
         </div>
+        </div>
       </div>
     </div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
       <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="printQuoteFromEditor()"><i class="fa-solid fa-print"></i> Generate Quote</button>
+      <button class="btn btn-primary" onclick="printQuoteFromEditor()"><i class="fa-solid fa-print"></i> Generate ${isProforma ? 'Proforma' : 'Quote'}</button>
     </div>
   `, true)
   setTimeout(updateQuoteEditorTotals, 0)
@@ -3443,8 +3589,9 @@ function removeQuoteEditorLine(btn) {
 function quoteEditorTotals(rows = collectQuoteEditorRows()) {
   const subtotal = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0)
   const totalSqm = rows.reduce((sum, row) => sum + quoteRowSqm(row), 0)
-  const cgstRate = parseQuoteNumber(document.getElementById('quote-cgst-rate')?.value)
-  const sgstRate = parseQuoteNumber(document.getElementById('quote-sgst-rate')?.value)
+  const isProforma = document.getElementById('quote-document-type')?.value === 'proforma'
+  const cgstRate = isProforma ? parseQuoteNumber(document.getElementById('quote-cgst-rate')?.value) : 0
+  const sgstRate = isProforma ? parseQuoteNumber(document.getElementById('quote-sgst-rate')?.value) : 0
   const cgst = subtotal * (cgstRate / 100)
   const sgst = subtotal * (sgstRate / 100)
   return { subtotal, totalSqm, cgstRate, sgstRate, cgst, sgst, finalAmount: subtotal + cgst + sgst }
@@ -3479,7 +3626,9 @@ function readQuoteEditorValue(id) {
 function collectQuoteEditorData() {
   const rows = collectQuoteEditorRows()
   const totals = quoteEditorTotals(rows)
+  const documentType = readQuoteEditorValue('quote-document-type') || 'quote'
   return {
+    documentType,
     quoteNo: readQuoteEditorValue('quote-no') || defaultQuoteNo(currentOrder),
     quoteDate: readQuoteEditorValue('quote-date') || quoteInputDate(),
     billingAddress: readQuoteEditorValue('quote-billing-address'),
@@ -3521,8 +3670,10 @@ function quotePrintRows(rows) {
 function quotePrintHtml(data) {
   const uid = currentOrder?.order_uid || currentOrder?.id?.substring(0, 8)?.toUpperCase() || ''
   const totalSqm = Number(data?.totals?.totalSqm ?? (data?.rows || []).reduce((sum, row) => sum + quoteRowSqm(row), 0))
+  const isProforma = data?.documentType === 'proforma'
+  const documentTitle = isProforma ? 'PROFORMA INVOICE' : 'QUOTE'
   return `<!DOCTYPE html><html><head>
-    <meta charset="UTF-8"><title>Quote ${esc(data.quoteNo || uid)}</title>
+    <meta charset="UTF-8"><title>${documentTitle} ${esc(data.quoteNo || uid)}</title>
     <style>
       *{box-sizing:border-box;}
       body{margin:0;background:#f1f5f9;color:#111;font-family:Arial,Helvetica,sans-serif;font-size:12px;}
@@ -3566,9 +3717,9 @@ function quotePrintHtml(data) {
         <div>${esc(QUOTE_COMPANY.emailLine)}</div>
         <div>${esc(QUOTE_COMPANY.gstin)}</div>
       </div>
-      <div class="quote-title">QUOTE</div>
+      <div class="quote-title">${documentTitle}</div>
       <div class="meta">
-        <div>PI No. ${esc(data.quoteNo)}</div>
+        <div>${isProforma ? 'PI' : 'Quote'} No. ${esc(data.quoteNo)}</div>
         <div>Date: ${quoteDisplayDate(data.quoteDate)}</div>
       </div>
       <div class="address-grid">
@@ -3592,8 +3743,8 @@ function quotePrintHtml(data) {
           ${quotePrintRows(data.rows)}
           <tr class="totals"><td colspan="5" style="border-left:1px solid #fff;border-bottom:1px solid #fff;"></td><td class="label">Total SQM</td><td class="num">${quotePlainNumber(totalSqm, 3).replace(/\.000$/, '')}</td></tr>
           <tr class="totals"><td colspan="5" style="border-left:1px solid #fff;border-bottom:1px solid #fff;"></td><td class="label">Total Amount</td><td class="num">${quotePlainNumber(data.totals.subtotal)}</td></tr>
-          <tr class="totals"><td colspan="5" style="border-left:1px solid #fff;border-bottom:1px solid #fff;"></td><td class="label">CGST</td><td class="num">${quotePlainNumber(data.totals.cgst)}</td></tr>
-          <tr class="totals"><td colspan="5" style="border-left:1px solid #fff;border-bottom:1px solid #fff;"></td><td class="label">SGST</td><td class="num">${quotePlainNumber(data.totals.sgst)}</td></tr>
+          ${isProforma ? `<tr class="totals"><td colspan="5" style="border-left:1px solid #fff;border-bottom:1px solid #fff;"></td><td class="label">CGST</td><td class="num">${quotePlainNumber(data.totals.cgst)}</td></tr>
+          <tr class="totals"><td colspan="5" style="border-left:1px solid #fff;border-bottom:1px solid #fff;"></td><td class="label">SGST</td><td class="num">${quotePlainNumber(data.totals.sgst)}</td></tr>` : ''}
           <tr class="totals"><td colspan="5" style="border-left:1px solid #fff;"></td><td class="label">Final Amount</td><td class="num">${quotePlainNumber(data.totals.finalAmount)}</td></tr>
         </tbody>
       </table>
@@ -3607,7 +3758,7 @@ function quotePrintHtml(data) {
             <tr><td>Delivery</td><td>: ${esc(data.terms.delivery)}</td></tr>
           </table>
         </div>
-        <div class="bank">
+        ${isProforma ? `<div class="bank">
           <div class="section-title">Our Bank Details</div>
           <table>
             <tr><td>A/c. Name</td><td>${esc(data.bank.accountName)}</td></tr>
@@ -3616,7 +3767,7 @@ function quotePrintHtml(data) {
             <tr><td>A/c No.</td><td>${esc(data.bank.accountNo)}</td></tr>
             <tr><td>IFSC</td><td>${esc(data.bank.ifsc)}</td></tr>
           </table>
-        </div>
+        </div>` : '<div></div>'}
       </div>
       <div class="signature"><div>For ${esc(QUOTE_COMPANY.name)}<br><br><br>Authorised Signatory</div></div>
     </div>
@@ -3647,7 +3798,7 @@ async function saveQuoteDownload(data, htmlText) {
     .insert({
       order_id: currentOrderId,
       quote_no: data.quoteNo || null,
-      document_type: 'quote',
+      document_type: data.documentType || 'quote',
       form_data: data,
       html: htmlText,
       created_by: currentProfile?.id || null,
@@ -3679,7 +3830,7 @@ async function printQuoteFromEditor() {
   try {
     await saveQuoteFormData(data)
     await saveQuoteDownload(data, htmlText)
-    toast('Quote saved to download history')
+    toast(`${data.documentType === 'proforma' ? 'Proforma' : 'Quote'} saved to download history`)
   } catch (err) {
     toast(`Quote generated, but history save failed: ${err.message}`, 'error')
   }
@@ -3691,14 +3842,15 @@ async function printQuoteFromEditor() {
 
 function openQuoteDownloads() {
   const rows = currentQuoteDownloads || []
-  openModal('Quote Downloads', `
+  openModal('Document Downloads', `
     ${rows.length ? `
       <div class="table-wrap" style="max-height:360px;overflow:auto;border:1px solid #e5e7eb;border-radius:8px;">
         <table style="margin:0;">
-          <thead><tr><th>Generated</th><th>Quote No.</th><th style="text-align:right;">Action</th></tr></thead>
+          <thead><tr><th>Generated</th><th>Type</th><th>No.</th><th style="text-align:right;">Action</th></tr></thead>
           <tbody>${rows.map(row => `
             <tr>
               <td>${fmtDateTime(row.created_at)}</td>
+              <td>${esc(row.document_type || row.form_data?.documentType || 'quote')}</td>
               <td>${esc(row.quote_no || row.form_data?.quoteNo || '-')}</td>
               <td style="text-align:right;">
                 <button class="btn btn-secondary btn-sm" onclick="redownloadQuote('${esc(row.id)}')">

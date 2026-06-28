@@ -23,8 +23,8 @@
           <button class="btn btn-primary" id="add-stock-btn" onclick="window.location.href='create.html?tab=stock'">
             <i class="fa-solid fa-plus"></i> Add Stock
           </button>
-          <button class="btn btn-secondary" id="add-variant-btn" onclick="openAddVariantModal()">
-            <i class="fa-solid fa-layer-group"></i> Create Master
+          <button class="btn btn-secondary" id="add-variant-btn" onclick="window.location.href='masters.html'">
+            <i class="fa-solid fa-sitemap"></i> Masters
           </button>
           <button class="btn btn-ghost btn-sm" onclick="exportInventoryExcel()" title="Export to Excel">
             <i class="fa-solid fa-file-excel"></i> Export
@@ -34,31 +34,23 @@
 
       <div class="stats-grid" id="inv-stats"></div>
 
-      <div class="page-tabs" style="margin-bottom:16px;">
-        <button class="page-tab-btn active" id="inv-tab-stock-btn" onclick="switchInventoryTab('stock')">
-          <i class="fa-solid fa-boxes-stacked"></i> Stock
-        </button>
-        <button class="page-tab-btn" id="inv-tab-codes-btn" onclick="switchInventoryTab('codes')">
-          <i class="fa-solid fa-barcode"></i> Finished Product Code
-        </button>
-      </div>
-
       <section id="inventory-stock-panel">
       <!-- Filters -->
       <div class="card" style="margin-bottom:16px;">
         <div class="card-header" style="padding:12px 16px;gap:10px;flex-wrap:wrap;justify-content:flex-start;">
           <input type="text" id="search-input" placeholder="Search variant, batch, category…" class="filter-input" style="flex:1;min-width:200px;">
-          <select id="subgroup-filter" class="filter-select" onchange="renderTree()">
-            <option value="">All Types</option>
-            <option value="Fabric">Fabrics</option>
-            <option value="Parts">Parts &amp; Hardware</option>
-            <option value="FG">Finished Goods</option>
-          </select>
-          <select id="cat-filter" class="filter-select" id="cat-filter-wrap"><option value="">All Categories</option></select>
+          <select id="page-filter" class="filter-select"><option value="">All Master Pages</option></select>
+          <select id="cat-filter" class="filter-select"><option value="">All Masters</option></select>
           <select id="status-filter" class="filter-select">
+            <option value="">All Stock</option>
             <option value="in_stock">In Stock</option>
-            <option value="">All</option>
             <option value="depleted">Depleted</option>
+          </select>
+          <select id="sort-filter" class="filter-select">
+            <option value="structure">Master Structure</option>
+            <option value="name">Name</option>
+            <option value="stock">Stock Qty</option>
+            <option value="value">Stock Value</option>
           </select>
           <button class="btn btn-ghost btn-sm" id="collapse-btn" onclick="collapseAll()" title="Collapse all">
             <i class="fa-solid fa-angles-up"></i>
@@ -71,34 +63,6 @@
 
       <!-- Inventory tree -->
       <div id="inv-tree"></div>
-      </section>
-
-      <section id="inventory-codes-panel" style="display:none;">
-        <div class="card" style="margin-bottom:16px;">
-          <div class="card-header" style="padding:12px 16px;gap:10px;flex-wrap:wrap;">
-            <input type="text" id="product-code-search" placeholder="Search product code or category…" class="filter-input" style="flex:1;min-width:220px;" oninput="renderProductCodes()">
-            <select id="product-code-category-filter" class="filter-select" onchange="renderProductCodes()">
-              <option value="">All Categories</option>
-            </select>
-            <button class="btn btn-primary" id="add-product-code-btn" onclick="openProductCodeModal()">
-              <i class="fa-solid fa-plus"></i> Add Code
-            </button>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <h2>Finished Product Code</h2>
-              <p id="product-code-count" class="text-muted text-sm">0 codes</p>
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Stock Category</th><th>Final Blinds Code</th><th>Status</th><th style="text-align:right;">Actions</th></tr></thead>
-              <tbody id="product-code-body"></tbody>
-            </table>
-          </div>
-        </div>
       </section>
 
     </div><!-- /content -->
@@ -120,6 +84,7 @@
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/auth.js"></script>
+<script src="js/test-mode.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/excel-export.js"></script>
 <script src="js/transitions.js"></script>

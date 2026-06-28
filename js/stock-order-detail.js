@@ -23,10 +23,6 @@ async function init() {
   const profile = await initSidebar()
   if (!profile) return
   currentProfile = profile
-  if (profile.role !== 'admin') {
-    window.location.href = 'orders.html'
-    return
-  }
   await loadStockOrder()
   hide('loading')
   show('content')
@@ -66,6 +62,10 @@ function renderStockOrder() {
   if (receiveBtn) {
     receiveBtn.style.display = stockOrder.status === 'pending' ? '' : 'none'
   }
+  const cancelBtn = document.getElementById('cancel-stock-order-btn')
+  if (cancelBtn) {
+    cancelBtn.style.display = stockOrder.status === 'pending' ? '' : 'none'
+  }
 
   html('stock-order-info', [
     fieldLabel('Supplier', stockOrder.supplier_name),
@@ -100,6 +100,22 @@ function renderStockOrder() {
   html('stock-items-body', stockItems.length
     ? stockItems.map(renderStockItemRow).join('')
     : '<tr><td colspan="7" class="empty-state">No stock items found</td></tr>')
+}
+
+async function cancelStockOrder() {
+  if (!stockOrder || stockOrder.status !== 'pending') return
+  const label = stockOrder.stock_order_uid || stockOrder.id
+  if (!confirm(`Cancel stock order ${label}?\n\nThis closes the order without adding anything to inventory.`)) return
+  const { error } = await db.from('stock_orders').update({
+    status: 'cancelled',
+  }).eq('id', stockOrder.id).eq('status', 'pending')
+  if (error) {
+    toast(error.message, 'error')
+    return
+  }
+  await logActivity('cancel', 'stock_order', stockOrder.id, label)
+  toast('Stock order cancelled')
+  await loadStockOrder()
 }
 
 function renderStockItemRow(item) {
@@ -247,7 +263,7 @@ function openPrintableHtml(docHtml) {
 async function downloadStockOrderForm() {
   if (!stockOrder) return
   const docHtml = stockOrderPrintHtml()
-  const userId = (await db.auth.getUser()).data.user?.id || null
+  const userId = AUTH.currentUserId()
   const { error } = await db.from('stock_order_downloads').insert({
     stock_order_id: stockOrder.id,
     document_type: 'stock_order',
@@ -302,7 +318,7 @@ async function receiveStockOrder() {
     btn.innerHTML = '<span class="spinner spinner-sm"></span> Adding...'
   }
   try {
-    const userId = (await db.auth.getUser()).data.user?.id || null
+    const userId = AUTH.currentUserId()
     for (const item of stockItems) {
       if (!item.variant_id) throw new Error(`Item ${item.line_no}: missing inventory variant`)
       const { error: variantErr } = await db.from('inv_variants').update({

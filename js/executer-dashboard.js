@@ -82,7 +82,6 @@ async function fetchProcessingOrdersWithItems() {
     .is('deleted_at', null)
     .order('created_at', { ascending: true })
 
-  if (currentProfile?.role === 'executer') query = query.eq('assigned_executor_id', currentProfile.id)
   let { data: orders, error } = await query
 
   if (error && /assigned_executor_id|executed_by|executed_at|assigned_at|assigned_by/i.test(error.message || '')) {
@@ -146,7 +145,6 @@ async function fetchCompletedOrdersWithItems() {
     .order('executed_at', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
 
-  if (currentProfile?.role === 'executer') query = query.eq('executed_by', currentProfile.id)
   let { data: orders, error } = await query
 
   if (error && /assigned_executor_id|executed_by|executed_at|assigned_at|assigned_by/i.test(error.message || '')) {
@@ -157,16 +155,6 @@ async function fetchCompletedOrdersWithItems() {
       .order('created_at', { ascending: false })
     ;({ data: orders, error } = await fallback)
 
-    if (!error && currentProfile?.role === 'executer') {
-      const { data: execLogs, error: execErr } = await db
-        .from('execution_logs')
-        .select('order_id')
-        .eq('executed_by', currentProfile.id)
-      if (!execErr) {
-        const allowed = new Set((execLogs || []).map(r => r.order_id))
-        orders = (orders || []).filter(o => allowed.has(o.id))
-      }
-    }
   }
 
   if (error) return { data: [], error }
@@ -421,7 +409,7 @@ function renderOrderCard(o) {
 }
 
 function renderCompletedSection() {
-  if (!supportsExecutorAssignment && currentProfile?.role === 'executer' && !completedOrders.length) {
+  if (!supportsExecutorAssignment && !completedOrders.length) {
     return `
       <div style="margin-top:24px;">
         <div class="card" style="padding:16px 18px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;">
@@ -430,12 +418,8 @@ function renderCompletedSection() {
       </div>`
   }
 
-  if (currentProfile?.role === 'executer') return ''
-
-  const heading = currentProfile?.role === 'executer' ? 'Completed By You' : 'Completed Orders'
-  const subtitle = currentProfile?.role === 'executer'
-    ? `${completedOrders.length} order${completedOrders.length !== 1 ? 's' : ''} you executed`
-    : `${completedOrders.length} executed/completed order${completedOrders.length !== 1 ? 's' : ''}`
+  const heading = 'Completed Orders'
+  const subtitle = `${completedOrders.length} executed/completed order${completedOrders.length !== 1 ? 's' : ''}`
 
   const body = !completedOrders.length
     ? `<div class="card" style="text-align:center;padding:28px 24px;color:#9ca3af;">
@@ -487,12 +471,22 @@ async function viewOrder(orderId) {
   document.getElementById('detail-view').style.display = ''
   window.scrollTo(0, 0)
 
-  // Load components, wastage logs, and recipes in parallel
-  const [compsRes, wastageRes, recipesRes] = await Promise.all([
+  const orderVariantIds = [...new Set((o.order_items || []).map(it => it.variant_id || it.inv_variants?.id).filter(Boolean))]
+
+  // Load components, wastage logs, cut pieces, and recipes in parallel
+  const [compsRes, wastageRes, cutPiecesRes, recipesRes] = await Promise.all([
     fetchOrderComponentsWithVariants(orderId),
     db.from('wastage_logs')
-      .select('id, order_item_id, variant_id, roll_id, cut_length_m, used_length_m, cut_width_m, used_width_m')
+      .select('id, order_item_id, variant_id, roll_id, source_piece_id, created_piece_id, cut_length_m, used_length_m, cut_width_m, used_width_m')
       .eq('order_id', orderId),
+    orderVariantIds.length
+      ? db.from('fabric_cut_pieces')
+          .select('id, variant_id, source_roll_id, source_order_id, source_order_item_id, width_m, length_m, remaining_length_m, unit, status, notes, created_at')
+          .in('variant_id', orderVariantIds)
+          .eq('status', 'available')
+          .gt('remaining_length_m', 0)
+          .order('created_at', { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
     db.from('product_recipes')
       .select('id, blind_type, recipe_items(id, variant_id, quantity_per_unit, is_width_dependent, inv_variants(id, name, unit, purchase_rate))')
       .eq('is_active', true),
@@ -503,7 +497,9 @@ async function viewOrder(orderId) {
   const items      = o.order_items || []
   let   comps      = compsRes.data  || []
   if (compsRes.error) console.warn('Executer components:', compsRes.error.message)
+  if (cutPiecesRes.error) console.warn('Cut pieces unavailable:', cutPiecesRes.error.message)
   const wastage    = wastageRes.data || []
+  const cutPieces  = cutPiecesRes.data || []
   const allRecipes = recipesRes.data || []
 
   // ── Component population ─────────────────────────────────────────────────────
@@ -659,7 +655,7 @@ async function viewOrder(orderId) {
   text('detail-order-sub',   `${fmtDateTime(o.order_date || o.created_at)} · ${items.length} item${items.length !== 1 ? 's' : ''}`)
 
   window._pendingExecData = window._pendingExecData || {}
-  window._pendingExecData[orderId] = { comps: allComps, wastage, items, inMemoryCompsByItemId }
+  window._pendingExecData[orderId] = { comps: allComps, wastage, cutPieces, items, inMemoryCompsByItemId }
 
   // ── Item rows ──
   const itemsHtml = items.map(it => {
@@ -671,6 +667,7 @@ async function viewOrder(orderId) {
     const rollWidth      = it.inv_variants?.width_m
     const existingWaste  = wastage.find(w => w.order_item_id === it.id)
     const selectedRollId = existingWaste?.roll_id || it.roll_id
+    const selectedPieceId = existingWaste?.source_piece_id || null
     const itemComps = allComps.filter(c => c.order_item_id === it.id)
     const measurementsHtml = renderItemMeasurements(it)
 
@@ -744,7 +741,7 @@ async function viewOrder(orderId) {
           ? (Number(it.height_cm)/100) * Number(it.quantity) * fabricMultiplier
           : 0)
     const plannedCutWidthM  = existingWaste?.cut_width_m
-      ?? (it.width_cm ? Number(it.width_cm)/100 : (rollWidth || 0))
+      ?? (rollWidth || (it.width_cm ? Number(it.width_cm)/100 : 0))
     const plannedCutWidthCm = (plannedCutWidthM * 100).toFixed(1)
 
     const inStockRolls = isFG
@@ -753,14 +750,29 @@ async function viewOrder(orderId) {
           .sort((a, b) => b.remaining_length - a.remaining_length)
       : []
 
-    const rollPickerHtml = inStockRolls.length > 0 ? `
+    const itemVariantId = it.inv_variants?.id || it.variant_id
+    const availablePieces = isFG
+      ? cutPieces
+          .filter(p => p.variant_id === itemVariantId && p.status === 'available' && Number(p.remaining_length_m || 0) > 0)
+          .filter(p => !plannedCutLength || Number(p.remaining_length_m || 0) + 0.0001 >= plannedCutLength)
+          .filter(p => !it.width_cm || Number(p.width_m || 0) + 0.0001 >= Number(it.width_cm) / 100)
+          .sort((a, b) => (Number(a.width_m || 0) - Number(b.width_m || 0)) || (Number(a.remaining_length_m || 0) - Number(b.remaining_length_m || 0)))
+      : []
+    const sourceValue = selectedPieceId ? `piece:${selectedPieceId}` : (selectedRollId ? `roll:${selectedRollId}` : '')
+
+    const rollPickerHtml = (inStockRolls.length > 0 || availablePieces.length > 0) ? `
       <div style="margin-top:8px;">
-        <div class="cut-label" style="margin-bottom:3px;">Cut from roll:</div>
-        <select class="roll-select" id="roll-pick-${it.id}" onchange="saveActualCutValue('${orderId}','${it.id}','roll_id', this.value)">
-          <option value="">Auto-select (smallest first)</option>
+        <div class="cut-label" style="margin-bottom:3px;">Fabric source:</div>
+        <select class="roll-select" id="source-pick-${it.id}" onchange="saveActualCutValue('${orderId}','${it.id}','source', this.value)">
+          <option value="">Auto-select fresh roll</option>
           ${inStockRolls.map(r => `<option value="${r.id}" ${selectedRollId === r.id ? 'selected' : ''}>
             ${esc(r.batch_code || 'Roll')} — ${Number(r.remaining_length).toFixed(2)}m remaining
           </option>`).join('')}
+          ${availablePieces.length ? `<optgroup label="Cut pieces">
+            ${availablePieces.map(p => `<option value="piece:${p.id}" ${sourceValue === `piece:${p.id}` ? 'selected' : ''}>
+              ${Number(p.width_m || 0).toFixed(3)}m x ${Number(p.remaining_length_m || 0).toFixed(3)}m cut piece
+            </option>`).join('')}
+          </optgroup>` : ''}
         </select>
       </div>` : (isFG && !inStockRolls.length ? `<div class="text-xs" style="color:#ef4444;margin-top:6px;">⚠ No rolls in stock</div>` : '')
 
@@ -1026,11 +1038,24 @@ function buildWastagePayloadForItem(orderId, it, existing = {}) {
     order_item_id: it.id,
     variant_id: it.inv_variants?.id || it.variant_id,
     roll_id: existing.roll_id || it.roll_id || null,
+    source_piece_id: existing.source_piece_id || null,
     cut_length_m: Number(existing.cut_length_m || defaultLen || 0),
     used_length_m: Number(existing.used_length_m || existing.cut_length_m || defaultLen || 0),
     cut_width_m: existing.cut_width_m ?? defaultCutWidth,
     used_width_m: existing.used_width_m ?? usedWidth,
   }
+}
+
+function parseFabricSourceValue(value, execData) {
+  const raw = String(value || '')
+  if (!raw) return { type: 'auto', id: null, rollId: null, piece: null }
+  if (raw.startsWith('piece:')) {
+    const id = raw.slice('piece:'.length)
+    const piece = (execData?.cutPieces || []).find(p => p.id === id) || null
+    return { type: 'piece', id, rollId: piece?.source_roll_id || null, piece }
+  }
+  const id = raw.startsWith('roll:') ? raw.slice('roll:'.length) : raw
+  return { type: 'roll', id, rollId: id, piece: null }
 }
 
 async function saveActualCutValue(orderId, itemId, field, rawValue) {
@@ -1056,9 +1081,30 @@ async function saveActualCutValue(orderId, itemId, field, rawValue) {
     payload.cut_width_m = widthCm / 100
     update.cut_width_m = widthCm / 100
     if (!payload.used_width_m) payload.used_width_m = widthCm / 100
-  } else if (field === 'roll_id') {
-    payload.roll_id = rawValue || null
-    update.roll_id = rawValue || null
+  } else if (field === 'roll_id' || field === 'source') {
+    const source = parseFabricSourceValue(rawValue, execData)
+    if (source.type === 'piece') {
+      payload.source_piece_id = source.id
+      payload.roll_id = source.rollId
+      update.source_piece_id = source.id
+      update.roll_id = source.rollId
+      if (source.piece?.width_m) {
+        payload.cut_width_m = Number(source.piece.width_m)
+        update.cut_width_m = Number(source.piece.width_m)
+        const widthInput = document.getElementById(`actual-width-${itemId}`)
+        if (widthInput) widthInput.value = (Number(source.piece.width_m) * 100).toFixed(1)
+      }
+    } else if (source.type === 'roll') {
+      payload.source_piece_id = null
+      payload.roll_id = source.id
+      update.source_piece_id = null
+      update.roll_id = source.id
+    } else {
+      payload.source_piece_id = null
+      payload.roll_id = null
+      update.source_piece_id = null
+      update.roll_id = null
+    }
   } else {
     return
   }
@@ -1069,14 +1115,14 @@ async function saveActualCutValue(orderId, itemId, field, rawValue) {
       const { data, error } = await db.from('wastage_logs')
         .update(update)
         .eq('id', existing.id)
-        .select('id, order_item_id, variant_id, roll_id, cut_length_m, used_length_m, cut_width_m, used_width_m')
+        .select('id, order_item_id, variant_id, roll_id, source_piece_id, created_piece_id, cut_length_m, used_length_m, cut_width_m, used_width_m')
         .single()
       if (error) throw error
       saved = data
     } else {
       const { data, error } = await db.from('wastage_logs')
         .insert(payload)
-        .select('id, order_item_id, variant_id, roll_id, cut_length_m, used_length_m, cut_width_m, used_width_m')
+        .select('id, order_item_id, variant_id, roll_id, source_piece_id, created_piece_id, cut_length_m, used_length_m, cut_width_m, used_width_m')
         .single()
       if (error) throw error
       saved = data
@@ -1136,13 +1182,18 @@ function captureAndExecute(orderId, customerLabel) {
     execData.capturedCuts   = {}
     execData.capturedWidths = {}
     execData.capturedRolls  = {}
+    execData.capturedSources = {}
     ;(execData.items || []).forEach(it => {
       const cutInp   = document.getElementById(`actual-cut-${it.id}`)
       const widthInp = document.getElementById(`actual-width-${it.id}`)
-      const rollSel  = document.getElementById(`roll-pick-${it.id}`)
+      const sourceSel = document.getElementById(`source-pick-${it.id}`)
       if (cutInp?.value)   execData.capturedCuts[it.id]   = parseFloat(cutInp.value)
       if (widthInp?.value) execData.capturedWidths[it.id] = parseFloat(widthInp.value) / 100  // cm → m
-      if (rollSel?.value)  execData.capturedRolls[it.id]  = rollSel.value
+      if (sourceSel?.value) {
+        execData.capturedSources[it.id] = sourceSel.value
+        const source = parseFabricSourceValue(sourceSel.value, execData)
+        if (source.rollId) execData.capturedRolls[it.id] = source.rollId
+      }
     })
   }
   executeOrder(orderId, customerLabel)
@@ -1164,6 +1215,7 @@ async function executeOrder(orderId, customerLabel) {
     const capturedCuts   = execData?.capturedCuts   || {}
     const capturedWidths = execData?.capturedWidths || {}
     const capturedRolls  = execData?.capturedRolls  || {}
+    const capturedSources = execData?.capturedSources || {}
     const stepError = (step, error) => {
       if (!error) return
       throw new Error(`${step}: ${error.message || String(error)}`)
@@ -1205,30 +1257,38 @@ async function executeOrder(orderId, customerLabel) {
 
       const mult       = (it.blind_type || '').startsWith('Sheer Dimout') ? 2 : 1
       const defaultLen = it.height_cm ? (Number(it.height_cm) / 100) * Number(it.quantity || 1) * mult : 0
-      const defaultWid = it.width_cm  ? Number(it.width_cm) / 100 : (it.inv_variants?.width_m || 0)
+      const defaultWid = it.inv_variants?.width_m || (it.width_cm ? Number(it.width_cm) / 100 : 0)
       const cutLen = !isNaN(capturedCuts[it.id])   ? capturedCuts[it.id]   : defaultLen
       const cutWid = !isNaN(capturedWidths[it.id]) ? capturedWidths[it.id] : defaultWid
       const wastageRow = execData?.wastage?.find(w => w.order_item_id === it.id)
+      const source = parseFabricSourceValue(capturedSources[it.id], execData)
+      const sourceRollId = source.rollId || capturedRolls[it.id] || null
+      const sourcePieceId = source.type === 'piece' ? source.id : null
+      const sourceCutWidth = source.type === 'piece' && source.piece?.width_m ? Number(source.piece.width_m) : cutWid
 
       if (wastageRow) {
         const update = {}
         if (!isNaN(capturedCuts[it.id])   && capturedCuts[it.id]   > 0) { update.cut_length_m = capturedCuts[it.id]; update.used_length_m = capturedCuts[it.id] }
-        if (!isNaN(capturedWidths[it.id]) && capturedWidths[it.id] > 0) {
-          update.cut_width_m  = capturedWidths[it.id]
-          update.used_width_m = it.width_cm ? Number(it.width_cm) / 100 : capturedWidths[it.id]
+        if ((!isNaN(capturedWidths[it.id]) && capturedWidths[it.id] > 0) || source.type === 'piece') {
+          update.cut_width_m  = sourceCutWidth
+          update.used_width_m = it.width_cm ? Number(it.width_cm) / 100 : sourceCutWidth
         }
-        if (capturedRolls[it.id]) update.roll_id = capturedRolls[it.id]
+        if (source.type !== 'auto') {
+          update.roll_id = sourceRollId
+          update.source_piece_id = sourcePieceId
+        }
         if (Object.keys(update).length) {
           const { error } = await db.from('wastage_logs').update(update).eq('id', wastageRow.id)
           stepError('Saving fabric cut details failed', error)
         }
       } else if (cutLen > 0) {
-        const rollId = capturedRolls[it.id] || it.roll_id || null
         const { error } = await db.from('wastage_logs').insert({
           order_id: orderId, order_item_id: it.id, variant_id: it.inv_variants.id,
-          roll_id: rollId, cut_length_m: cutLen, used_length_m: cutLen,
-          cut_width_m: cutWid > 0 ? cutWid : null,
-          used_width_m: it.width_cm ? Number(it.width_cm) / 100 : (cutWid > 0 ? cutWid : null),
+          roll_id: sourceRollId || it.roll_id || null,
+          source_piece_id: sourcePieceId,
+          cut_length_m: cutLen, used_length_m: cutLen,
+          cut_width_m: sourceCutWidth > 0 ? sourceCutWidth : null,
+          used_width_m: it.width_cm ? Number(it.width_cm) / 100 : (sourceCutWidth > 0 ? sourceCutWidth : null),
         })
         stepError('Saving fabric cut details failed', error)
       }
@@ -1256,20 +1316,21 @@ async function executeOrder(orderId, customerLabel) {
     success = true
     const fab  = result?.fabric_items_deducted ?? 0
     const comp = result?.components_deducted   ?? 0
+    const pieces = result?.cut_pieces_created ?? 0
     const { error: statusErr } = await db.from('orders').update({
       status: 'executed',
       executed_by: currentProfile.id,
       executed_at: new Date().toISOString(),
     }).eq('id', orderId)
     stepError('Marking order executed failed', statusErr)
-    toast(`Order executed! ${fab} fabric item${fab!==1?'s':''} and ${comp} component${comp!==1?'s':''} deducted.`)
+    toast(`Order executed! ${fab} fabric item${fab!==1?'s':''}, ${comp} component${comp!==1?'s':''}, ${pieces} cut piece${pieces!==1?'s':''} created.`)
     if (window._pendingExecData) delete window._pendingExecData[orderId]
 
     db.from('execution_logs').insert({ order_id: orderId, executed_by: currentProfile.id, notes }).catch(() => {})
     await calculateAndStoreOrderCost(orderId)
     await logActivity('execute', 'order', orderId, `#${orderId.substring(0,8)}`, {
       status: { old: 'processing', new: 'executed' },
-      executed_by: currentProfile.full_name || currentProfile.email,
+      executed_by: currentProfile.full_name || currentProfile.username,
       fabric_deducted: fab, notes,
     })
   } catch (err) {

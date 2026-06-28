@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Masters - Vista Manufacturing</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+  <!-- Masters page: structure and mechanism setup. -->
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="loading-center" id="loading"><div class="spinner spinner-lg"></div></div>
+    <div id="content" class="d-none">
+
+      <div class="page-header">
+        <div>
+          <h1>Masters</h1>
+          <p>Main masters, nested sub masters, and separate mechanism groups.</p>
+        </div>
+        <div id="master-page-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button class="btn btn-secondary" id="sync-masters-btn" onclick="syncMastersToInventory()">
+            <i class="fa-solid fa-rotate"></i> Sync Inventory
+          </button>
+          <button class="btn btn-primary" onclick="openMainMasterModal()">
+            <i class="fa-solid fa-plus"></i> Main Master
+          </button>
+        </div>
+      </div>
+
+      <div class="tab-strip masters-tab-strip">
+        <button class="page-tab-btn active" id="masters-tab-structure" onclick="switchMastersTab('structure')">
+          <i class="fa-solid fa-sitemap"></i> Master Structure
+        </button>
+        <button class="page-tab-btn" id="masters-tab-mechanisms" onclick="switchMastersTab('mechanisms')">
+          <i class="fa-solid fa-gears"></i> Mechanisms
+        </button>
+      </div>
+
+      <section id="masters-panel-structure" class="masters-tab-panel">
+        <div class="master-pages-toolbar" id="master-page-tabs"></div>
+        <div id="master-stats"></div>
+
+        <div class="master-toolbar">
+            <input type="text" id="master-search" placeholder="Search masters..." class="filter-input" style="flex:1;min-width:220px;" oninput="renderMasters()">
+            <button class="btn btn-ghost btn-sm" onclick="expandAllMasters()" title="Expand all">
+              <i class="fa-solid fa-angles-down"></i>
+            </button>
+            <button class="btn btn-ghost btn-sm" onclick="collapseAllMasters()" title="Collapse all">
+              <i class="fa-solid fa-angles-up"></i>
+            </button>
+        </div>
+
+        <div id="masters-tree"></div>
+      </section>
+
+      <section id="masters-panel-mechanisms" class="masters-tab-panel d-none">
+      <div class="master-feature-panel">
+        <div class="master-feature-head">
+          <div>
+            <h2>Mechanisms</h2>
+            <p>Feature groups that can be applied to selected masters separately from the master tree.</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="openMechanismGroupModal()">
+            <i class="fa-solid fa-plus"></i> Mechanism Group
+          </button>
+        </div>
+        <div id="mechanism-setup-error"></div>
+        <div id="mechanism-stats"></div>
+        <div class="mechanism-layout">
+          <section>
+            <div class="master-subhead">
+              <span>Groups and Options</span>
+              <span class="text-xs text-muted">Headrail, cassette, mono mech, etc.</span>
+            </div>
+            <div id="mechanism-groups"></div>
+          </section>
+          <section>
+            <div class="master-subhead">
+              <span>Apply to Masters</span>
+              <span class="text-xs text-muted">Choose where each mechanism applies.</span>
+            </div>
+            <div class="mechanism-assign-box">
+              <div class="form-group" style="margin:0;">
+                <label>Master</label>
+                <select id="mechanism-master-select"></select>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label>Mechanism Group</label>
+                <select id="mechanism-group-select"></select>
+              </div>
+              <button class="btn btn-secondary btn-sm" id="mechanism-assign-btn" onclick="assignMechanismGroup()">
+                <i class="fa-solid fa-link"></i> Apply
+              </button>
+            </div>
+            <div id="mechanism-assignments"></div>
+          </section>
+        </div>
+      </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">Modal</h3>
+      <button class="modal-close" onclick="closeModal()">x</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/test-mode.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/transitions.js"></script>
+<script src="js/sidebar.js"></script>
+<script src="js/masters.js"></script>
+</body>
+</html>

@@ -57,36 +57,81 @@ async function insertWithRlsFallback(table, payload, selectCols = '*') {
 }
 
 function switchCreateTab(tab) {
+  const activeTab = ['stock', 'order', 'tickets'].includes(tab) ? tab : 'stock'
   const stockTab = document.getElementById('tab-stock')
   const orderTab = document.getElementById('tab-order')
+  const ticketsTab = document.getElementById('tab-tickets')
   const stockBtn = document.getElementById('tab-btn-stock')
   const orderBtn = document.getElementById('tab-btn-order')
-  if (stockTab) stockTab.style.display = tab === 'stock' ? '' : 'none'
-  if (orderTab) orderTab.style.display = tab === 'order' ? '' : 'none'
-  stockBtn?.classList.toggle('active', tab === 'stock')
-  orderBtn?.classList.toggle('active', tab === 'order')
+  const ticketsBtn = document.getElementById('tab-btn-tickets')
+  if (stockTab) stockTab.style.display = activeTab === 'stock' ? '' : 'none'
+  if (orderTab) orderTab.style.display = activeTab === 'order' ? '' : 'none'
+  if (ticketsTab) ticketsTab.style.display = activeTab === 'tickets' ? '' : 'none'
+  stockBtn?.classList.toggle('active', activeTab === 'stock')
+  orderBtn?.classList.toggle('active', activeTab === 'order')
+  ticketsBtn?.classList.toggle('active', activeTab === 'tickets')
   const url = new URL(window.location.href)
-  url.searchParams.set('tab', tab)
+  url.searchParams.set('tab', activeTab)
   window.history.replaceState(null, '', url.toString())
-  if (tab === 'order') requestOrderFrameHeight()
+  if (activeTab === 'order') requestOrderFrameHeight()
+  if (activeTab === 'tickets') requestTicketsFrameHeight()
+}
+
+function enterTicketConversionMode(ticketId) {
+  if (!ticketId) return
+  document.body.classList.add('ticket-conversion-mode')
+  document.getElementById('content')?.classList.add('ticket-conversion-content')
+  const url = new URL(window.location.href)
+  url.searchParams.set('tab', 'order')
+  url.searchParams.set('ticket', ticketId)
+  window.history.replaceState(null, '', url.toString())
+  let rail = document.getElementById('ticket-conversion-rail')
+  if (!rail) {
+    rail = document.createElement('div')
+    rail.id = 'ticket-conversion-rail'
+    rail.className = 'ticket-conversion-rail'
+    document.body.appendChild(rail)
+  }
+  rail.innerHTML = `
+    <div class="conversion-rail-tab"><i class="fa-solid fa-bars"></i></div>
+    <div class="conversion-rail-panel">
+      <div class="conversion-rail-title">Ticket Order</div>
+      <button class="conversion-rail-btn" onclick="exitTicketConversionMode('tickets')">
+        <i class="fa-solid fa-ticket"></i><span>Back to Tickets</span>
+      </button>
+      <button class="conversion-rail-btn" onclick="exitTicketConversionMode('create')">
+        <i class="fa-solid fa-table-columns"></i><span>Show Create</span>
+      </button>
+    </div>`
+}
+
+function exitTicketConversionMode(target = 'create') {
+  document.body.classList.remove('ticket-conversion-mode')
+  document.getElementById('content')?.classList.remove('ticket-conversion-content')
+  document.getElementById('ticket-conversion-rail')?.remove()
+  const url = new URL(window.location.href)
+  url.searchParams.delete('ticket')
+  window.history.replaceState(null, '', url.toString())
+  if (target === 'tickets') {
+    const ticketFrame = document.getElementById('tickets-frame')
+    if (ticketFrame) ticketFrame.src = 'tickets.html?embed=1'
+    switchCreateTab('tickets')
+    return
+  }
+  const orderFrame = document.getElementById('create-order-frame')
+  if (orderFrame) orderFrame.src = 'create-order.html?embed=1'
+  switchCreateTab('order')
 }
 
 async function init() {
   const profile = await initSidebar()
   if (!profile) return
   currentProfile = profile
-  if (!['admin', 'sales'].includes(profile.role)) { window.location.href = 'orders.html'; return }
-
-  document.getElementById('bill-date').value = new Date().toISOString().slice(0, 10)
+  if (document.getElementById('bill-date')) document.getElementById('bill-date').value = new Date().toISOString().slice(0, 10)
   applyStockOrderFormDefaults()
-  const canUseStock = profile.role === 'admin'
-  if (canUseStock) {
-    await loadCreateData()
-    if (!restoreStockDraft()) addStockItem()
-    setupStockDraftAutosave()
-  } else {
-    configureSalesCreateView()
-  }
+  await loadCreateData()
+  if (!restoreStockDraft()) addStockItem()
+  setupStockDraftAutosave()
   document.addEventListener('click', e => {
     if (!e.target.closest('#supplier-select-wrap')) closeSupplierDropdown()
     if (!e.target.closest('.stock-smart-select')) closeItemDropdowns()
@@ -96,10 +141,21 @@ async function init() {
     const frame = document.getElementById('create-order-frame')
     if (frame) frame.style.height = `${Math.max(720, Number(e.data.height || 0) + 12)}px`
   })
+  window.addEventListener('message', e => {
+    if (e.data?.type === 'tickets-height') {
+      const frame = document.getElementById('tickets-frame')
+      if (frame) frame.style.height = `${Math.max(720, Number(e.data.height || 0) + 12)}px`
+      return
+    }
+    if (e.data?.type === 'open-create-order-ticket' && e.data.ticketId) {
+      const frame = document.getElementById('create-order-frame')
+      if (frame) frame.src = `create-order.html?embed=1&ticket=${encodeURIComponent(e.data.ticketId)}`
+      enterTicketConversionMode(e.data.ticketId)
+      switchCreateTab('order')
+    }
+  })
   const requestedTab = new URLSearchParams(window.location.search).get('tab')
-  if (profile.role === 'sales') {
-    switchCreateTab('order')
-  } else if (requestedTab === 'order' || requestedTab === 'stock') {
+  if (['order', 'stock', 'tickets'].includes(requestedTab)) {
     switchCreateTab(requestedTab)
   }
   applyCreateOrderTicketParam()
@@ -112,7 +168,11 @@ function configureSalesCreateView() {
   const stockTab = document.getElementById('tab-stock')
   if (stockTab) stockTab.remove()
   const heroText = document.querySelector('.workspace-hero p')
-  if (heroText) heroText.textContent = 'Create customer orders without stock or finance admin controls.'
+  if (heroText) heroText.textContent = 'Generate quotations or capture a new customer requirement ticket.'
+}
+
+function configureExecuterCreateView() {
+  window.location.href = 'tickets.html'
 }
 
 async function loadCreateData() {
@@ -143,6 +203,11 @@ function requestOrderFrameHeight() {
   frame?.contentWindow?.postMessage({ type: 'request-create-order-height' }, '*')
 }
 
+function requestTicketsFrameHeight() {
+  const frame = document.getElementById('tickets-frame')
+  frame?.contentWindow?.postMessage({ type: 'request-tickets-height' }, '*')
+}
+
 function createOrderFrameSrc() {
   const ticketId = new URLSearchParams(window.location.search).get('ticket')
   return `create-order.html?embed=1${ticketId ? `&ticket=${encodeURIComponent(ticketId)}` : ''}`
@@ -153,9 +218,14 @@ function applyCreateOrderTicketParam() {
   if (!frame) return
   const nextSrc = createOrderFrameSrc()
   if (!frame.getAttribute('src')?.endsWith(nextSrc)) frame.src = nextSrc
+  const ticketId = new URLSearchParams(window.location.search).get('ticket')
+  if (ticketId) enterTicketConversionMode(ticketId)
 }
 
 function closeCreateOrderPanel() {
+  document.body.classList.remove('ticket-conversion-mode')
+  document.getElementById('content')?.classList.remove('ticket-conversion-content')
+  document.getElementById('ticket-conversion-rail')?.remove()
   switchCreateTab('stock')
 }
 
@@ -272,6 +342,8 @@ function supplierPayload() {
 async function ensureSupplier() {
   if (!isNewSupplier) return selectedSupplier
   const payload = supplierPayload()
+  const hasAnySupplierDetail = Object.values(payload).some(Boolean)
+  if (!hasAnySupplierDetail) return null
   if (!payload.name) throw new Error('Supplier name is required')
   const existing = suppliers.find(s => norm(s.name) === norm(payload.name))
   if (existing) return existing
@@ -325,15 +397,7 @@ function buildStockItemCard(id, position) {
           <i class="fa-solid fa-trash"></i>
         </button>
       </div>
-      <div class="form-row cols-3" style="margin-bottom:12px;">
-        <div class="form-group">
-          <label>Item Type *</label>
-          <select id="item-type-${id}" onchange="onItemTypeChange(${id})">
-            <option value="Fabric" ${valOr(`item-type-${id}`, 'Fabric') === 'Fabric' ? 'selected' : ''}>Fabric</option>
-            <option value="Parts" ${valOr(`item-type-${id}`, 'Fabric') === 'Parts' ? 'selected' : ''}>Parts / Hardware</option>
-            <option value="FG" ${valOr(`item-type-${id}`, 'Fabric') === 'FG' ? 'selected' : ''}>Finished Goods</option>
-          </select>
-        </div>
+      <div class="form-row cols-2" style="margin-bottom:12px;">
         ${dropdownHtml(id, 'category', 'Category *', state.category?.name || 'Search or create category...')}
         ${dropdownHtml(id, 'variant', 'Variant / Material Name *', state.variant?.name || 'Search or create variant...')}
       </div>
@@ -387,7 +451,7 @@ function valOrFilled(id, fallback) {
 }
 
 function defaultUnit(id) {
-  return valOr(`item-type-${id}`, 'Fabric') === 'Fabric' ? 'm' : 'pcs'
+  return itemState[id]?.variant?.unit || 'pcs'
 }
 
 function onItemTypeChange(id) {
@@ -434,29 +498,24 @@ function createOptionHtml(label, onclick) {
 
 function renderCategoryOptions(id, q = '') {
   const query = norm(q)
-  const type = valOr(`item-type-${id}`, 'Fabric')
-  const rows = categories.filter(c => categoryMatchesType(c, type) && (!query || norm(c.name).includes(query)))
+  const rows = categories.filter(c => !query || norm(c.name).includes(query))
   let out = rows.map(c => optionHtml(c.name, c.sub_group, `selectCategoryForItem(${id}, '${c.id}')`)).join('')
   if (query && !rows.some(c => norm(c.name) === query)) out += createOptionHtml(q, `createCategoryForItem(${id}, '${safeArg(q)}')`)
   html(`category-options-${id}`, out || '<div class="smart-empty">No categories found</div>')
 }
 
 function categoryMatchesType(category, type) {
-  const group = String(category?.sub_group || '')
-  if (type === 'FG') return group === 'FG' || group === 'Finished Goods'
-  return group === type
+  return true
 }
 
 function renderMasterCategoryOptions() {
   const list = document.getElementById('master-category-list')
   if (!list) return
-  const type = val('master-type') || 'Fabric'
   list.innerHTML = categories
-    .filter(c => categoryMatchesType(c, type))
     .map(c => `<option value="${esc(c.name)}"></option>`)
     .join('')
   const unit = document.getElementById('master-unit')
-  if (unit && !unit.value) unit.value = type === 'Fabric' ? 'm' : 'pcs'
+  if (unit && !unit.value) unit.value = 'pcs'
 }
 
 function selectCategoryForItem(id, categoryId) {
@@ -470,10 +529,9 @@ function selectCategoryForItem(id, categoryId) {
 
 async function createCategoryForItem(id, encodedName) {
   const name = decodeURIComponent(encodedName).trim()
-  const type = valOr(`item-type-${id}`, 'Fabric')
   if (!name) return
   const { data, error } = await db.from('inv_categories')
-    .upsert({ name, normalized_name: norm(name), sub_group: type }, { onConflict: 'normalized_name' })
+    .upsert({ name, normalized_name: norm(name), sub_group: 'Master' }, { onConflict: 'normalized_name' })
     .select('*').single()
   if (error) { toast(error.message, 'error'); return }
   categories = categories.filter(c => c.id !== data.id).concat(data)
@@ -543,11 +601,11 @@ async function ensureCatalogVariant(product, name, unit, width, rate) {
 async function saveStockMaster() {
   hideAlert('stock-alert')
   const btn = document.getElementById('save-master-btn')
-  const type = val('master-type') || 'Fabric'
+  const type = 'Master'
   const categoryName = val('master-category').trim()
   const productName = val('master-product').trim()
   const variantName = val('master-variant').trim() || productName
-  const unit = val('master-unit') || (type === 'Fabric' ? 'm' : 'pcs')
+  const unit = val('master-unit') || 'pcs'
   const width = Number(val('master-width') || 0) || null
   const rate = Number(val('master-rate') || 0) || null
 
@@ -723,10 +781,8 @@ async function ensureItemEntities(row) {
 
 async function saveStock() {
   hideAlert('stock-alert')
-  const billNo = val('bill-no').trim()
-  const billDate = val('bill-date')
-  if (!billNo) { showAlert('stock-alert', 'Bill number is required'); return }
-  if (!billDate) { showAlert('stock-alert', 'Bill date is required'); return }
+  const billNo = val('bill-no').trim() || `LOOSE-${new Date().toISOString().slice(0, 10)}-${Date.now().toString().slice(-5)}`
+  const billDate = val('bill-date') || new Date().toISOString().slice(0, 10)
 
   const btn = document.getElementById('save-stock-btn')
   btn.disabled = true
@@ -735,9 +791,8 @@ async function saveStock() {
   let cleanupCreatedStockOrder = false
 
   try {
-    const supplier = await ensureSupplier()
-    if (!supplier) throw new Error('Select an existing supplier or create a new supplier')
-    const currentUserId = (await db.auth.getUser()).data.user?.id || null
+    const supplier = await ensureSupplier() || { id: null, name: 'Loose Stock', isLegacy: true }
+    const currentUserId = AUTH.currentUserId()
 
     const rows = []
     for (const raw of collectItemRows()) {
@@ -770,7 +825,7 @@ async function saveStock() {
     const itemPayload = rows.map(row => ({
       stock_order_id: stockOrder.id,
       line_no: row.lineNo,
-      item_type: valOr(`item-type-${row.id}`, 'Fabric'),
+      item_type: 'Master',
       category_id: row.category.id,
       category_name: row.category.name,
       variant_id: row.variant.id,

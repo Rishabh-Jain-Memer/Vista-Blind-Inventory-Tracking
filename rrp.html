@@ -2,92 +2,136 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RRP — Vista Manufacturing</title>
+  <title>RRP - Vista Manufacturing</title>
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    body.rrp-page .main { padding: 8px 10px !important; }
+    body.rrp-page .page-header:not(.workspace-hero) {
+      padding: 6px 10px !important;
+      margin-bottom: 6px !important;
+      border-radius: 10px !important;
+    }
+    body.rrp-page .card {
+      padding: 5px !important;
+      border-radius: 8px !important;
+    }
+    #rrp-rules-list table.rrp-sheet-table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+      background: #fff;
+    }
+    #rrp-rules-list .rrp-sheet-table th,
+    #rrp-rules-list .rrp-sheet-table td {
+      padding: 2px 4px !important;
+      font-size: 11px !important;
+      line-height: 1.05 !important;
+      letter-spacing: 0 !important;
+      vertical-align: middle;
+    }
+    #rrp-rules-list .rrp-sheet-table th {
+      font-weight: 800;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    #rrp-rules-list .rrp-section-row td {
+      padding: 3px 6px !important;
+      font-size: 11px !important;
+      line-height: 1 !important;
+    }
+    #rrp-rules-list .rrp-rate-btn {
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+      font-weight: 800;
+      font-size: 11px;
+      line-height: 1;
+      padding: 0;
+    }
+    #rrp-rules-list .rrp-action-cell {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 2px;
+    }
+    #rrp-rules-list .rrp-icon-action {
+      width: 13px;
+      height: 16px;
+      min-width: 0;
+      min-height: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #475569;
+      cursor: pointer;
+      font-size: 11px;
+      line-height: 1;
+    }
+    .rrp-top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+    .rrp-top-search {
+      width: 280px;
+      max-width: 30vw;
+      padding: 5px 8px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      font-size: 12px;
+      background: #fff;
+    }
+    #rrp-rules-list .rrp-icon-action:hover { color: #2563eb; }
+    #rrp-rules-list .rrp-icon-action.danger { color: #dc2626; }
+  </style>
 </head>
-<body>
+<body class="rrp-page">
 <div class="app">
   <aside class="sidebar" id="sidebar"></aside>
   <main class="main">
     <div class="loading-center" id="loading"><div class="spinner spinner-lg"></div></div>
     <div id="content" class="d-none">
-
-      <div class="page-header">
+      <div class="page-header" style="padding:6px 10px;margin-bottom:6px;min-height:auto;">
         <div>
-          <h1>RRP</h1>
-          <p class="text-muted text-sm">Retail &amp; dealer price list — used as the default selling rate when creating orders.</p>
+          <h1 style="font-size:20px;line-height:1;margin:0;">RRP</h1>
         </div>
-        <div style="display:flex;gap:8px;align-items:center;" id="header-actions">
-          <span id="unsaved-badge" style="display:none;font-size:12px;color:#d97706;font-weight:600;background:#fef3c7;padding:3px 10px;border-radius:999px;">
-            <i class="fa-solid fa-circle-dot" style="font-size:9px;margin-right:4px;"></i>Unsaved changes
-          </span>
-          <button class="btn btn-secondary btn-sm" id="discard-btn" onclick="discardChanges()" style="display:none;">Discard</button>
-          <button class="btn btn-primary btn-sm" id="save-btn" onclick="saveChanges()" style="display:none;">
-            <i class="fa-solid fa-floppy-disk"></i> Save Changes
+        <div class="rrp-top-actions">
+          <input id="rrp-rule-search" class="rrp-top-search" placeholder="Search master or mechanism..." oninput="renderRRPRules()">
+          <button class="btn btn-primary btn-sm" onclick="openRRPRuleModal()" title="Create RRP Table" style="padding:6px 9px;">
+            <i class="fa-solid fa-plus"></i>
           </button>
         </div>
       </div>
 
-      <div id="rrp-tabs" style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:1.5rem;overflow-x:auto;"></div>
-
-      <!-- ── ROLLER BLINDS TAB ──────────────────────────────────────────────── -->
-      <div>
-
-        <!-- Legend -->
-        <div class="card" style="margin-bottom:16px;padding:12px 16px;">
-          <div style="display:flex;gap:24px;flex-wrap:wrap;font-size:12px;align-items:center;">
-            <div style="color:#6b7280;"><i class="fa-solid fa-info-circle" style="margin-right:4px;color:#3b82f6;"></i>
-              RRP = Retail Price · DP = Dealer Price (auto = RRP ÷ 2) · Click any RRP cell to edit
-            </div>
-            <div style="margin-left:auto;display:flex;gap:12px;">
-              <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#dbeafe;display:inline-block;"></span> Screen</span>
-              <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#d1fae5;display:inline-block;"></span> Translucent</span>
-              <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#ede9fe;display:inline-block;"></span> Blackout</span>
-            </div>
-          </div>
+      <section id="rrp-rules-panel">
+        <div id="rrp-rule-setup-error"></div>
+        <div class="card" style="padding:5px;">
+          <div id="rrp-rules-list"></div>
         </div>
-
-        <div class="card" id="rrp-table-wrap">
-          <div class="table-wrap">
-            <table id="rrp-table" style="font-size:13px;">
-              <thead>
-                <tr>
-                  <th style="min-width:200px;">Fabric Name</th>
-                  <th style="text-align:center;min-width:80px;">Max Width</th>
-                  <th style="text-align:center;min-width:80px;">UOM</th>
-                  <th colspan="2" style="text-align:center;min-width:180px;border-left:2px solid var(--border);">Without Headrail</th>
-                  <th colspan="2" style="text-align:center;min-width:180px;border-left:2px solid var(--border);">With Headrail</th>
-                  <th colspan="2" style="text-align:center;min-width:180px;border-left:2px solid var(--border);">With Plain Cassette</th>
-                  <th colspan="2" style="text-align:center;min-width:180px;border-left:2px solid var(--border);">With Dec. Cassette</th>
-                </tr>
-                <tr style="font-size:11px;background:#f9fafb;">
-                  <th></th><th></th><th></th>
-                  <th style="text-align:center;color:#059669;border-left:2px solid var(--border);">RRP</th>
-                  <th style="text-align:center;color:#9ca3af;">DP</th>
-                  <th style="text-align:center;color:#059669;border-left:2px solid var(--border);">RRP</th>
-                  <th style="text-align:center;color:#9ca3af;">DP</th>
-                  <th style="text-align:center;color:#059669;border-left:2px solid var(--border);">RRP</th>
-                  <th style="text-align:center;color:#9ca3af;">DP</th>
-                  <th style="text-align:center;color:#059669;border-left:2px solid var(--border);">RRP</th>
-                  <th style="text-align:center;color:#9ca3af;">DP</th>
-                </tr>
-              </thead>
-              <tbody id="rrp-tbody">
-                <tr><td colspan="11" style="text-align:center;padding:24px;color:#9ca3af;">Loading…</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-      </div>
+      </section>
     </div>
   </main>
+</div>
+
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">Modal</h3>
+      <button class="modal-close" onclick="closeModal()">x</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/auth.js"></script>
+<script src="js/test-mode.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/transitions.js"></script>
 <script src="js/sidebar.js"></script>

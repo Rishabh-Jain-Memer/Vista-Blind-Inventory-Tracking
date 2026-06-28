@@ -1,32 +1,16 @@
 /*
-  Login page controller.
-  Auth success should not depend on a perfect profile lookup. Role lookup only
-  decides the landing page; if it fails, send the user to the admin dashboard.
+  Login page controller for app-level username/password sessions.
 */
 
 function loginLandingForRole(role) {
-  if (role === 'customer') return 'customer-dashboard.html'
   if (role === 'executer') return 'executer-dashboard.html'
-  if (role === 'sales') return 'orders.html'
+  if (role === 'sales') return 'tickets.html'
+  if (role === 'management') return 'dashboard.html'
   return 'dashboard.html'
 }
 
-async function loginProfileRole(userId) {
-  if (!userId) return null
-  const { data, error } = await db
-    .from('profiles')
-    .select('role')
-    .eq('id', userId)
-    .maybeSingle()
-  if (error) {
-    console.warn('Profile role lookup failed:', error.message)
-    return null
-  }
-  return data?.role || null
-}
-
 async function redirectForSession(session) {
-  const role = await loginProfileRole(session?.user?.id)
+  const role = session?.profile?.role || null
   window.location.href = loginLandingForRole(role)
 }
 
@@ -41,13 +25,16 @@ async function redirectForSession(session) {
     btn.innerHTML = '<span class="spinner spinner-sm"></span> Signing in...'
 
     try {
-      const { data, error } = await db.auth.signInWithPassword({
-        email: val('email').trim(),
-        password: val('password'),
+      const { data, error } = await db.rpc('app_login', {
+        p_username: val('username').trim(),
+        p_password: val('password'),
       })
       if (error) throw error
-      if (!data?.session) throw new Error('Sign in succeeded but no session was returned. Try refreshing and signing in again.')
-      await redirectForSession(data.session)
+      const row = data?.[0]
+      if (!row?.token) throw new Error('Sign in succeeded but no session was returned. Try refreshing and signing in again.')
+      AUTH.setToken(row.token)
+      AUTH.cachedProfile = row
+      await redirectForSession({ token: row.token, profile: row, user: { id: row.id } })
     } catch (err) {
       showAlert('login-alert', err.message || 'Sign in failed')
       btn.disabled = false
@@ -55,7 +42,6 @@ async function redirectForSession(session) {
     }
   })
 
-  const { data: { session }, error } = await db.auth.getSession()
-  if (error) console.warn('Existing session check failed:', error.message)
+  const session = await AUTH.session()
   if (session) await redirectForSession(session)
 })()

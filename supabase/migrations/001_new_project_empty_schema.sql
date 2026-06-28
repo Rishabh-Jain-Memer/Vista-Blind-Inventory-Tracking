@@ -13,6 +13,14 @@ DO $$ BEGIN CREATE TYPE public."order_source" AS ENUM ('manual', 'excel_outflow'
 DO $$ BEGIN CREATE TYPE public."order_status" AS ENUM ('Pending', 'Processing', 'Completed', 'Cancelled', 'Discussing', 'Executed', 'inquiry', 'processing', 'executed', 'completed'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE public."user_role" AS ENUM ('admin', 'staff', 'customer'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+CREATE SEQUENCE IF NOT EXISTS public.order_ticket_number_seq
+  AS bigint
+  START WITH 1
+  INCREMENT BY 1
+  NO MINVALUE
+  NO MAXVALUE
+  CACHE 1;
+
 CREATE TABLE public."activity_logs" (
   "id" UUID DEFAULT gen_random_uuid() NOT NULL,
   "user_id" UUID,

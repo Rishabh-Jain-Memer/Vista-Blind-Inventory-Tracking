@@ -1,31 +1,33 @@
 # Current State
 
-Last updated: 2026-06-20.
+Last updated: 2026-06-28.
 
 ## Isolated Clone Created On 2026-06-20
 
 - This checkout was cloned into `D:\Downloads\Vista Blind\Vista Blind Tracking New` from the active local app folder and attached to `https://github.com/Rishabh-Jain-Memer/Vista-Blind-Inventory-Tracking.git`.
 - `js/config.js` is configured with the new isolated Supabase project `knawjdrsdqgyfzqzddix` at `https://knawjdrsdqgyfzqzddix.supabase.co`.
 - The copied original Supabase project refs in older Context/docs are historical safety references. Do not treat them as the target database for this new clone.
-- The local Supabase CLI profile cannot link or inspect project `knawjdrsdqgyfzqzddix`; `supabase link --project-ref knawjdrsdqgyfzqzddix --yes` returns a `403` permissions error. Use the new project's direct Postgres connection string / database password for migration work unless CLI access is granted.
-- The Supabase CLI can see an older `Vista Blind Dev Environment` project (`vehnkaoutoleonigzuzp`), but it is currently `INACTIVE` and did not return API keys during setup.
-- Empty new-project setup files now live in `supabase/setup/`: run `001_new_project_empty_schema.sql` first, then create the first Auth user in Supabase Dashboard and run `002_link_first_admin_profile.sql` with that user's email. This creates the app schema without fabric/catalog/order data and links the first admin profile for login.
+- The local Supabase CLI is currently linked to `knawjdrsdqgyfzqzddix`; `supabase projects list` confirmed the linked project on 2026-06-28.
+- `supabase db query --linked`, `supabase migration list --linked`, and `supabase db push --linked --dry-run` currently hang without a remote Postgres password/URL. `VISTA_NEW_DB_URL` and `SUPABASE_ACCESS_TOKEN` were not set on 2026-06-28.
+- `supabase status` currently fails because local Docker containers are not running/available; this is local Docker status, not remote project health.
+- The older browser dev-environment/staging switch has been removed from this clone; browser pages now always use the isolated New Supabase project configured in `js/config.js`.
+- The new-project SQL lane now lives only in `supabase/migrations/`: run `001_new_project_empty_schema.sql`, create the first Auth user in Supabase Dashboard, run `002_link_first_admin_profile.sql`, then continue through the current numbered migrations in order.
+- `010_import_vista_inflow_rishi_masters.sql` imports structure-only masters from `Excel File/Vista-Inflow Data to Rishi.xlsx`. It deduplicates repeated RM/FG/inventory rows into Fabrics, Parts, Tracks, and Motors master pages without importing quantities, rolls, rates, movements, or RRP values.
 
-## Staging Lane Added On 2026-06-09
+## New Project Data Wiped On 2026-06-24
 
-- `js/config.js` now forces live Supabase on production/non-local hosts and allows staging only on local hosts (`localhost`, `127.0.0.1`, `::1`).
-- `dev-environment.html` stores staging Supabase URL/anon key in the local browser and switches local testing between live and staging without editing code.
-- App pages show a yellow `STAGING DB` badge when local testing is connected to staging.
-- `STAGING_SETUP.md` documents the required staging Supabase project setup, schema/data restore, staging Auth user setup, and local workflow checks.
-- `scripts/generate_restore_sql_from_backup.py` generates public-table restore SQL from a backup workbook.
-- `scripts/restore_backup_to_staging.ps1` restores backup data to an explicit `STAGING_DB_URL` and refuses the known live project ref `akjybtvaezxayfwtpifd`.
-- `scripts/export_supabase_to_excel.mjs` now reads the live constants from `js/config.js` after the config switch, unless `SUPABASE_URL` / `SUPABASE_ANON_KEY` are provided.
-- Staging Supabase project `vehnkaoutoleonigzuzp` is now available as `Vista Blind Dev Environment`.
-- Because direct Postgres ports were blocked locally, staging was rebuilt through Supabase Management API HTTPS calls using live as a read-only schema source.
-- Staging public schema was rebuilt from live public schema metadata, then restored from `exports/vista_supabase_backup_2026-06-06T06-29-40.xlsx`.
-- Staging restore verification on 2026-06-09: profiles 7, customers 42, inv_rolls 421, inv_movements 811, product_codes 267, orders 48, order_items 121, order_components 699, wastage_logs 58, activity_logs 152, order_tickets 38, order_ticket_followups 6, order_quote_forms 1, order_quote_downloads 5.
-- Staging Auth has an admin login for `rishabhmjain2006@gmail.com`; do not record the password or service-role key in repo files or Context docs.
-- Local staging setup page is served at `http://127.0.0.1:8000/dev-environment.html` when the static server is running.
+- The linked New Supabase project `knawjdrsdqgyfzqzddix` was wiped clean again for manual data entry.
+- Public app/import/catalog tables were truncated with identity reset, including orders, tickets, customers, inventory categories/products/variants/rolls/movements, masters, mechanisms, RRP, recipes, stock orders, suppliers, wastage, activity logs, and Excel import helper tables.
+- Schema/framework objects were preserved: tables, columns, constraints, RLS, functions, triggers, and frontend files remain in place.
+- Supabase Auth and `public.profiles` now contain only `rishabhmjain2006@gmail.com` / `Rishabh Jain` as admin.
+- Verification after the latest reset: every public app table except `profiles` returned 0 rows, `public.profiles` returned 1 row, `auth.users` returned 1 row, and `order_ticket_number_seq` is reset with `last_value = 1` and `is_called = false`.
+- The previously imported workbook-derived masters from `010_import_vista_inflow_rishi_masters.sql` were intentionally cleared from the live New database so masters can now be entered manually through the website.
+
+## Browser Dev Environment Removed On 2026-06-28
+
+- `js/config.js` now always uses the isolated New Supabase project `knawjdrsdqgyfzqzddix`.
+- Removed `dev-environment.html`, `STAGING_SETUP.md`, and the old browser/localStorage staging restore helpers because this clone itself is the isolated development lane.
+- Do not rely on URL parameters or browser localStorage to switch Supabase projects. If a separate staging database is needed later, use explicit direct DB credentials and document the target before running SQL.
 
 ## Supabase Data Restored On 2026-06-09
 
@@ -39,16 +41,12 @@ Last updated: 2026-06-20.
 - `public.generate_order_uid()` returns `VB-2627-0049`, so sales order numbering continues after the restored 48 orders.
 - Referential checks after restore found no missing `order_components.order_item_id` links and no missing `wastage_logs.roll_id` links.
 
-## Clean-Framework Reset Executed On 2026-06-07
+## Migration Lane Simplified On 2026-06-20
 
-- A full public app-data cleanup path now exists at `supabase/migrations/035_clean_app_data_framework.sql`.
-- Migration 35 was executed against the linked Supabase project `akjybtvaezxayfwtpifd` through `supabase db query --linked --file supabase\migrations\035_clean_app_data_framework.sql`.
-- The cleanup starts the next development phase from an empty structural framework. It preserves tables, columns, indexes, RLS policies, triggers, functions/RPCs, and Supabase Auth users/profiles by default.
-- The default wipe clears inventory/catalog rows, order/ticket/quote/stock-order/download rows, customers, suppliers, activity logs, wastage/execution records, and legacy drifted table rows if those old tables still exist.
-- Verification after execution showed `0` rows in checked app tables: orders, order items/components, tickets/follow-ups, inventory hierarchy/ledger, customers, suppliers, stock orders/items, components, RRP/product-code catalogs, activity logs, and wastage logs.
-- Ticket numbering was reset; `order_ticket_number_seq` is at `last_value = 1` with `is_called = false`, so the next ticket starts again at `0001`.
-- Admin profiles were preserved so the app still has admin login access.
-- The optional full account wipe at the bottom of migration 35 is intentionally commented out. Only run it separately if the owner is ready to recreate the first admin user from Supabase Auth/dashboard or the `admin-users` Edge Function.
+- The old migration chain `001` through `036` was removed from `supabase/migrations` because this clone is being reworked as a new website.
+- `supabase/setup/` was removed as a separate SQL lane. Its setup SQL now lives in `supabase/migrations`.
+- The active SQL files are the current numbered files in `supabase/migrations`; do not restore old removed migrations unless explicitly asked.
+- Do not run or recreate the older import, cleanup, RRP, component, stock-refresh, or historical patch migrations unless the owner explicitly asks to restore legacy data.
 - Future agents must read the Context folder before coding and append/update Context after meaningful changes, especially database resets, table changes, routing changes, and workflow changes.
 
 ## Cleanup Completed
@@ -60,14 +58,37 @@ Future agents should read `Context/AI_GUARDRAILS.md` before touching database na
 Removed from the working tree:
 
 - Historical Supabase migrations that referenced old schemas.
+- The separate `supabase/setup` SQL lane; setup now runs through `supabase/migrations`.
 - Duplicate custom migration folder.
 - Old Python/Node import scripts.
 - Local package files and `node_modules`, because the frontend has no build step.
 
 ## Current Feature Direction
 
+- Active roles are `admin`, `management`, `sales`, and `executer`.
+- Login is now app-level database login through `profiles.username`, password hashes, and `app_sessions`; frontend pages no longer use Supabase Auth sessions.
+- The initial admin app login is username `admin` with temporary password `admin123` unless it has already been changed in Settings.
+- All roles currently have full website visibility in the sidebar and page controllers.
+- Admin is the only role that can create, edit, or delete employee/customer/supplier profile records through the current UI/RPC flow.
+- Management, Sales, and Executer visibility is intentionally broad for now; role-by-role restrictions are planned later.
+- Admin now has a `Masters` sidebar tab at `masters.html` for first-pass catalog setup in this clone.
+- Main masters are neutral top-level groups, not Fabric/Parts/Finished Goods types.
+- Masters are structure-only and stored in `master_nodes`: main masters have no parent, and every sub master points to its parent master node.
+- Masters can be edited or deleted from the Masters page. Deleting a master cascades through nested sub masters only; it does not delete already-synced inventory rows.
+- Masters can mark any node `exclude_from_pnc_name`, which means that node's label should be skipped later when final PNC names are generated.
+- The Masters page supports main masters and unlimited nested sub masters. It must not show generated combination lists inside Masters.
+- Masters can sync generated inventory items into `inv_categories`, `inv_products`, and zero-stock `inv_variants`.
+- Masters setup must stay free of pieces, rates, quantities, and live stock writes. It does not write `inv_rolls` or `inv_movements`.
+- Mechanisms are now separate from the master tree. `mechanism_groups`, `mechanism_options`, and `master_mechanism_groups` store feature dimensions such as headrail, cassette, mono mechanism, and laddertape mechanism, plus dropdown assignments to selected masters.
+- Mechanism options can now link to inventory-backed parts through `mechanism_part_links`. Each part link stores the inventory variant, quantity rule, quantity per unit, wastage percentage, unit, and notes. Create Order uses those links to create planned `order_components` for the selected mechanism.
+- `014_mechanism_part_links.sql` must be followed by `015_mechanism_part_links_anon_permissions.sql` because the browser app uses the anon key with app-level sessions. Without 015, Masters shows `permission denied for table mechanism_part_links`.
+- `003_master_nodes_structure.sql` seeds first-pass master categories from `Excel File/Vista Dealer RRP April 2026.xlsx`, mechanism labels from the RRP/inflow workbooks, and color/code sub masters from `Excel File/Vista Inventory Inflow New.xlsx`.
+- Color/code values are nested under a skipped `Color` label for each fabric family, so final generated names include the actual color/code but not the word `Color`.
+- The seed imports structure labels only, not stock quantities, purchase rates, rolls, or movements.
+- `010_import_vista_inflow_rishi_masters.sql` adds the newer workbook-derived structure from `Excel File/Vista-Inflow Data to Rishi.xlsx`: Roller Blind, Sheer Dimout, S-Contour fabric paths, plus separate Parts, Tracks, and Motors pages. It is also structure-only and intentionally ignores repetitive stock rows except as label evidence.
 - Profiles now has Employees, Customers, and Suppliers.
-- Tickets is now a top-level sidebar tab for all employee roles.
+- The visible Settings page (`account-settings.html`) now has an Admin Test Mode card for admin users only. Profiles also carries the same admin-only control. Test mode captures app writes locally in the browser through `js/test-mode.js`; turning it off clears the local sandbox and returns pages to real Supabase data.
+- Components and Inventory > Finished Product Code are removed from the active website UI in this clone. RRP, Wastage, Activity Log, Tickets, and Orders are active workflow tabs.
 - Employee profiles drill into recent activity log rows.
 - Customer profiles summarize order count/value and list linked orders.
 - Supplier profiles summarize inward purchases by month, bill number, date, and line item.
@@ -76,7 +97,9 @@ Removed from the working tree:
 
 ## Current UI State On 2026-05-07
 
-- `create.html` is the main "Create" sidebar tab.
+- `masters.html` is the admin master-structure setup tab. Inventory links back to it from the header `Masters` button.
+- `inventory.html` filters now follow the Masters structure: first by master page, then by main master inside that page, with search covering inventory names, master names, page names, roll/batch/bill/supplier data, and cut pieces.
+- `create.html` is the main "Create" sidebar tab. It has Create Purchase Order, Create Sales Order, and Tickets tabs.
 - `Create > Create Purchase Order` is sectioned as Supplier, Bill Details, Stock Order Form, and Items.
 - Create Purchase Order supports multiple supplier-order line items under one supplier bill/order reference.
 - Create Purchase Order supplier selection follows the same pattern as Create Order customer selection:
@@ -91,77 +114,53 @@ Removed from the working tree:
   - Inventory batches and ledger rows are written to `inv_rolls` and `inv_movements` only after the stock order is opened and received from `stock-order-detail.html`.
 - The Create Purchase Order "Add Item" button sits below the current item cards so newly added items push it downward.
 - `Create > Create Order` embeds `create-order.html?embed=1`, but the iframe now auto-resizes using `postMessage` so the Create tab scrolls as one page instead of trapping the form in a nested scroll.
-- `tickets.html` writes pre-order inquiry records to `order_tickets`. New tickets store typed customer name/mobile, inquiry-for, location, allocation, status, remarks, and the converted `orders.id` once confirmed, then open the dedicated ticket detail page. The inquiry date is database-managed and not shown as a ticket entry field.
+- `tickets.html` writes CRM records to `order_tickets`. It now runs both as a sidebar Tickets page and inside Create through `tickets.html?embed=1`. New tickets store typed customer name/mobile, inquiry-for, location, allocation, status, remarks, and the linked quotation `orders.id` once generated. The inquiry date is database-managed and not shown as a ticket entry field.
 - Follow-ups are append-only rows in `order_ticket_followups`. The latest follow-up updates the ticket status/visible remarks, while older follow-ups remain visible as uneditable history.
-- Ticket conversion opens `create.html?tab=order&ticket=<id>`, which loads the existing `create-order.html?embed=1&ticket=<id>` form. If the ticket is already linked to a customer it selects that profile; otherwise it prefills the Create Order new-customer form from the typed ticket name/mobile. The ticket is marked `converted` only after the normal order/items/components insert succeeds.
+- Ticket quotation generation opens `create.html?tab=order&ticket=<id>`, which loads `create-order.html?embed=1&ticket=<id>`. If the ticket is already linked to a customer it selects that profile; otherwise it prefills typed customer fields from the ticket name/mobile. The ticket is marked `confirmed` only after the quotation/order/items/components insert succeeds.
+- Quotations insert into `orders` with `status = quotation`, remain visible from Tickets, and are hidden from the Orders list until the customer confirms the quote.
+- Customer confirmation from the ticket detail page moves the linked quotation to `orders.status = active`.
+- Active orders can request management approval. Admin/Management approval changes `approval_status` to `approved`, after which proforma invoice generation is available.
+- Quote documents omit GST and bank details. Approved proforma documents include GST and bank details.
+- Inventory stock is not checked during quotation creation. After management approval, staff choose `in_house` to move to processing or `direct_order` when the franchise has no stock and must order from Vista.
 - Create Order item labels are visually renumbered after delete/add. Internal item IDs remain unique, but the UI should show continuous labels like `Item 1`, `Item 2`.
 - Sidebar tabs can be drag-reordered for admin/staff sidebars. The order is stored in browser `localStorage` by role and applied by `js/sidebar.js`.
 - Profiles toolbars are now consistent across Employees, Customers, and Suppliers.
-- Admin now has an admin-only `Components` sidebar tab at `recipes.html`.
-- Visible wording across the app should say `Components`, not `Recipes`, even though the database still uses `product_recipes` and `recipe_items`.
-- Blind component products now use the same drill-in style as Profiles: click a product, open it fully, then edit its linked inventory components.
-- Track components are no longer read-only shells once imported. They are meant to become DB-backed rows through migration 10.
+- The old admin Components page files were removed. `product_recipes` and `recipe_items` remain database-side BOM inputs used by order and production code.
 
-## Active Order Status Values
+## Active Workflow Status Values
 
-Use only these current statuses in app code and SQL:
+Use these current ticket statuses:
 
 ```text
-inquiry
+active
+confirmed
+cancelled
+```
+
+Use these current order statuses in app code and SQL:
+
+```text
+quotation
+active
+approved
 processing
-executed
+direct_order
+cancelled
 completed
 ```
 
-Outward reports should only count/show completed orders.
+Legacy `inquiry`, `pending`, and `discussing` values should be treated as `active` only for backward compatibility.
 
-## Supabase Verification On 2026-05-06
+## Active Database Setup
 
-After running migrations 1-3, live Supabase was reachable through the app REST API and showed:
+Run the current numbered SQL lane for this new website clone:
 
-- `inv_categories`: 12
-- `inv_products`: 144
-- `inv_variants`: 276
-- `inv_rolls`: 315
-- `inv_movements`: 315
-- `SUM(inv_rolls.stock_value)`: Rs 65,79,451.25
+1. `supabase/migrations/001_new_project_empty_schema.sql`
+2. Create the first Auth user in Supabase Dashboard.
+3. `supabase/migrations/002_link_first_admin_profile.sql`
+4. Continue through the remaining numbered migration files in order, currently through `015_mechanism_part_links_anon_permissions.sql`.
 
-Supporting tables before migration 4:
-
-- `product_recipes`: 0
-- `recipe_items`: 0
-- `fg_stock`: missing
-
-Migration 5 adds the `suppliers` table used by the Suppliers tab in Profiles.
-Migration 6 repairs optional profile fields and disables profile-table RLS for the current frontend flow.
-Migration 7 drops lingering supplier RLS policies and normalizes order statuses to `inquiry`, `processing`, `executed`, and `completed`.
-Migration 8 adds order executer assignment support.
-Migration 9 refreshes blind component definitions from the updated workbook while preventing `NULL variant_id` inserts.
-Migration 10 imports the 3 track component products into `product_recipes` and `recipe_items`.
-Migration 11 adds Roller Blind RRP pricing.
-Migration 12 is the deployment security pass: anonymous table grants are revoked, RLS is enabled for active app tables, and admin user management moves to the `admin-users` Supabase Edge Function.
-Migration 13 adds the `product_codes` catalog and links order items to product code/name fields.
-Migration 14 adds optional order invoice number/date fields.
-Migration 15 expands `rrp_entries` with `price_map` data for all blind families while keeping DP app-computed as RRP / 2.
-Migration 16 repairs Torrent fabric inventory links by moving Torrent variants from incorrect parent products to matching Torrent products.
-Migration 17 converts order quantities/component quantities to numeric-safe columns and dedupes duplicate rollback ledger rows.
-Migration 18 removes empty zero-total inquiry order headers left behind by failed order item inserts.
-Migration 19 restores the `execute_order` RPC and lets assigned executers save fabric cut/roll details in `wastage_logs` before execution.
-Migration 20 adds optional original input measurement columns to `order_items` so future orders can show raw input values next to normalized/rounded dimensions.
-Migration 21 imports `Excel File/Vertical Blinds Stock.xlsx` into inventory as append-only vertical fabric stock: category `Vertical Blind Fabrics`, 16 variants, 95 stock rolls, and Rs 53,66,790.00 stock value.
-Migration 22 refreshes the complete `Vertical Blind Fabrics` stock/rate set from the updated `Vertical Blinds Stock.xlsx`: 95 stock rolls, 16 variants, 8,067 m, and Rs 1,67,364.00 stock value. It updates matching imported rolls/ledger rows by variant + batch code and preserves already-consumed quantity if any vertical stock was deducted.
-Migration 23 adds `order_tickets` for pre-order customer requirement capture and conversion into confirmed orders.
-Migration 24 opens ticket read/write RLS policies to all authenticated employee roles so the sidebar Tickets page works for admin, sales, and executer users.
-Migration 25 adds ticket inquiry fields (`inquiry_date`, typed customer name/mobile, inquiry-for, location, allocation) and immutable `order_ticket_followups` history.
-Migration 26 fixes sales order visibility under RLS. Sales users can read every order plus order items/components/wastage detail through `can_view_order`, while write access remains governed by the stricter `can_access_order` policies.
-Migration 27 opens order update access to sales users so shared sales workflows such as executer assignment work across orders created by any sales profile. Order delete remains admin-only.
-Migration 28 opens employee profile display reads to employee roles so ticket creator, owner, and follow-up author names resolve instead of leaking profile UUIDs.
-Migration 29 replaces random ticket IDs with database-generated `TKT-NNNNDDMMYY` IDs. Existing tickets are backfilled by creation order, and new tickets use the same sequence trigger.
-Migration 30 lets sales users edit order items/components on shared open orders, matching the visible edit controls in `order-detail.html`.
-Migration 32 changes ticket IDs from `TKT-NNNNDDMMYY` to plain sequence numbers such as `0001`, `0002`, while preserving database-side generation.
-Migration 33 adds `order_quote_forms` for the latest editable Quote / Proforma Invoice defaults per order and `order_quote_downloads` for every generated quote snapshot.
-Migration 34 adds `stock_orders`, `stock_order_items`, and `stock_order_downloads` so Create > Create Purchase Order creates a pending supplier stock order with download history before inventory is received.
-Migration 35 clears public app data for a clean structural framework while preserving schema/RLS/functions and keeping Auth users/profiles by default.
+The previous numbered import and cleanup migration notes are historical and their SQL files were removed from the active migration folder.
 
 ## Current UI State On 2026-06-04
 
@@ -199,6 +198,4 @@ Migration 35 clears public app data for a clean structural framework while prese
 
 `settings.html` and `js/settings.js` are historical filenames. The visible app label is now "Profiles" because the page manages team users and customer profiles.
 
-`create-order.html` is still the full order form. `create.html` is the combined Create tab that includes Create Purchase Order and embeds Create Order.
-
-`recipes.html` and `js/recipes.js` are historical filenames. The visible app label is now "Components".
+`create-order.html` is still the full order form. `create.html` is the combined Create tab that includes Create Purchase Order, embeds Create Order, and embeds Tickets.

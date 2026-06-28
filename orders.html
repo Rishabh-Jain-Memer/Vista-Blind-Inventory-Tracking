@@ -23,7 +23,7 @@
             <i class="fa-solid fa-box-open"></i> New Stock Order
           </button>
           <button class="btn btn-primary" onclick="openCreateOrderPanel()">
-            <i class="fa-solid fa-plus"></i> New Order
+            <i class="fa-solid fa-file-invoice"></i> Generate Quotation
           </button>
         </div>
       </div>
@@ -42,9 +42,11 @@
           <input type="text" id="search-input" placeholder="Search orders, customer, dealer..." class="filter-input">
           <select id="status-filter" class="filter-select">
             <option value="">All Statuses</option>
-            <option value="inquiry">Inquiry</option>
+            <option value="active">Active</option>
+            <option value="approved">Approved</option>
             <option value="processing">Processing</option>
-            <option value="executed">Executed</option>
+            <option value="direct_order">Direct Order</option>
+            <option value="cancelled">Cancelled</option>
             <option value="completed">Completed</option>
           </select>
           <button id="deleted-toggle-btn" class="btn btn-secondary btn-sm" onclick="toggleDeleted()" style="white-space:nowrap;">
@@ -118,6 +120,7 @@
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/auth.js"></script>
+<script src="js/test-mode.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/excel-export.js"></script>
 <script src="js/transitions.js"></script>

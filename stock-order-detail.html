@@ -30,6 +30,9 @@
           <button class="btn btn-secondary" onclick="downloadStockOrderForm()">
             <i class="fa-solid fa-file-invoice"></i> Stock Form
           </button>
+          <button class="btn btn-secondary" id="cancel-stock-order-btn" onclick="cancelStockOrder()" style="border-color:#fecaca;color:#b91c1c;">
+            <i class="fa-solid fa-ban"></i> Cancel
+          </button>
           <button class="btn btn-primary" id="receive-stock-btn" onclick="receiveStockOrder()">
             <i class="fa-solid fa-boxes-stacked"></i> Receive Stock
           </button>
@@ -86,6 +89,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/auth.js"></script>
+<script src="js/test-mode.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/transitions.js"></script>
 <script src="js/sidebar.js"></script>

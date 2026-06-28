@@ -43,48 +43,24 @@ async function initSidebar() {
   const page = currentPageName()
   const role = profile?.role
 
-  // Redirect restricted roles away from pages they can't access
-  const adminOnlyPages = ['settings.html', 'inventory.html', 'create.html', 'activity-log.html', 'wastage.html', 'reports.html', 'recipes.html', 'rrp.html']
-  const salesAllowedPages = ['orders.html', 'create.html', 'tickets.html', 'ticket-detail.html', 'settings.html', 'order-detail.html', 'account-settings.html']
-  const executerAllowedPages = ['executer-dashboard.html', 'tickets.html', 'ticket-detail.html', 'account-settings.html']
-  if (role === 'executer' && !executerAllowedPages.includes(page)) {
-    window.location.href = 'executer-dashboard.html'; return null
-  }
-  if (role === 'sales' && !salesAllowedPages.includes(page)) {
-    window.location.href = 'orders.html'; return null
-  }
-
-  const nav = []
-  if (role === 'executer') {
-    nav.push({ href: 'executer-dashboard.html', icon: 'fa-hammer',        label: 'Production Queue' })
-    nav.push({ href: 'tickets.html',            icon: 'fa-ticket',        label: 'Tickets' })
-    nav.push({ href: 'account-settings.html',  icon: 'fa-gear',          label: 'Settings' })
-  } else if (role === 'sales') {
-    nav.push({ href: 'create.html?tab=order',   icon: 'fa-square-plus',   label: 'Create Order' })
-    nav.push({ href: 'tickets.html',            icon: 'fa-ticket',        label: 'Tickets' })
-    nav.push({ href: 'orders.html',             icon: 'fa-cart-shopping', label: 'Orders' })
-    nav.push({ href: 'settings.html',           icon: 'fa-address-book',  label: 'Profiles' })
-    nav.push({ href: 'account-settings.html',   icon: 'fa-gear',          label: 'Settings' })
-  } else {
-    // admin
-    nav.push({ href: 'dashboard.html',          icon: 'fa-chart-line',       label: 'Dashboard' })
-    nav.push({ href: 'inventory.html',          icon: 'fa-boxes-stacked',    label: 'Inventory' })
-    nav.push({ href: 'recipes.html',            icon: 'fa-book-open',        label: 'Components' })
-    nav.push({ href: 'rrp.html',               icon: 'fa-tag',              label: 'RRP' })
-    nav.push({ href: 'create.html',             icon: 'fa-square-plus',      label: 'Create' })
-    nav.push({ href: 'tickets.html',            icon: 'fa-ticket',           label: 'Tickets' })
-    nav.push({ href: 'orders.html',             icon: 'fa-cart-shopping',    label: 'Orders' })
-    nav.push({ href: 'wastage.html',            icon: 'fa-scissors',         label: 'Wastage' })
-    nav.push({ href: 'reports.html',            icon: 'fa-chart-bar',        label: 'Reports' })
-    nav.push({ href: 'activity-log.html',       icon: 'fa-clock-rotate-left',label: 'Activity Log' })
-    if (role === 'admin') {
-      nav.push({ href: 'settings.html', icon: 'fa-address-book', label: 'Profiles' })
-    }
-    nav.push({ href: 'account-settings.html',   icon: 'fa-gear',             label: 'Settings' })
-  }
+  const nav = [
+    { href: 'dashboard.html',           icon: 'fa-chart-line',        label: 'Dashboard' },
+    { href: 'masters.html',             icon: 'fa-sitemap',           label: 'Masters' },
+    { href: 'inventory.html',           icon: 'fa-boxes-stacked',     label: 'Inventory' },
+    { href: 'rrp.html',                 icon: 'fa-tags',              label: 'RRP' },
+    { href: 'create.html',              icon: 'fa-square-plus',       label: 'Create' },
+    { href: 'tickets.html',             icon: 'fa-ticket',            label: 'Tickets' },
+    { href: 'orders.html',              icon: 'fa-cart-shopping',     label: 'Orders' },
+    { href: 'executer-dashboard.html',  icon: 'fa-hammer',            label: 'Production Queue' },
+    { href: 'wastage.html',             icon: 'fa-scissors',          label: 'Wastage' },
+    { href: 'reports.html',             icon: 'fa-chart-bar',         label: 'Reports' },
+    { href: 'activity-log.html',        icon: 'fa-clock-rotate-left', label: 'Activity Log' },
+    { href: 'settings.html',            icon: 'fa-address-book',      label: 'Profiles' },
+    { href: 'account-settings.html',    icon: 'fa-gear',              label: 'Settings' },
+  ]
 
   const orderedNav = applySidebarOrder(nav, role)
-  const canReorder = !['executer', 'sales'].includes(role)
+  const canReorder = role === 'admin'
   const links = orderedNav.map(n => {
     const navPage = String(n.href).split('?')[0]
     const isActive = page === navPage
@@ -102,7 +78,7 @@ async function initSidebar() {
     </div>
     <nav class="sidebar-nav">${links}</nav>
     <div class="sidebar-footer">
-      <div class="user-name">${profile?.full_name || profile?.email || 'User'}</div>
+      <div class="user-name">${profile?.full_name || profile?.username || 'User'}</div>
       <div class="user-role">${profile?.role || 'admin'}</div>
       <button class="signout-btn" onclick="AUTH.signOut()">
         <i class="fa-solid fa-right-from-bracket"></i> Sign out

@@ -11,7 +11,7 @@ After every meaningful change, append the result to `Context/CHANGELOG.md`. If y
 ## Golden Rules
 
 - Supabase is the source of truth for inventory, orders, components, and customer/profile data.
-- Live Supabase must stay operational during major changes. Use the staging lane in `STAGING_SETUP.md` for workflow testing and database experiments.
+- The original/live Supabase project must stay untouched. This clone already uses the isolated New Supabase project in `js/config.js`; use explicit database credentials for any additional staging database work.
 - Keep the stack simple: HTML, CSS, vanilla JavaScript, Supabase. Do not add React, Vue, TypeScript, Tailwind, or a build tool unless the owner explicitly asks.
 - Use one stylesheet: `css/style.css`.
 - If the UI shows empty data, check live table counts and RLS before assuming a frontend bug.
@@ -19,8 +19,11 @@ After every meaningful change, append the result to `Context/CHANGELOG.md`. If y
 - If any table/variable name is unclear, check `Context/AI_GUARDRAILS.md` before editing.
 - Do not move features between pages casually. Current direction:
   - Inventory shows current inventory only.
-  - Create handles Create Purchase Order and Create Order.
+  - Masters shows structure setup: main masters and nested sub masters from `master_nodes`, plus separate mechanism groups/options and their assignments.
+  - Create handles Create Purchase Order, Create Sales Order, and Tickets.
   - Profiles handles Employees, Customers, Suppliers.
+  - The old Components page and Inventory > Finished Product Code UI are removed from the active website UI in this clone.
+  - RRP, Wastage, Activity Log, Tickets, Orders, and Reports are active workflow/sidebar tabs.
 - Keep repeated UI patterns consistent. If changing Profiles toolbar/buttons, update Employees, Customers, and Suppliers together.
 - Keep global browser JS style. Functions are intentionally globals because pages call them from inline HTML handlers.
 
@@ -30,13 +33,42 @@ After every meaningful change, append the result to `Context/CHANGELOG.md`. If y
 inv_categories -> inv_products -> inv_variants -> inv_rolls -> inv_movements
 ```
 
-## Current Clean-Framework Reset
+## Active Master Structure Table
 
-Migration `035_clean_app_data_framework.sql` is the current data wipe path. It preserves schema, RLS, functions, triggers, and Supabase Auth users/profiles by default while clearing public app data from inventory, orders, tickets, customers, suppliers, components, RRP/product-code catalogs, quote/download history, activity logs, and stock-order rows. Use its optional account-wipe block only if the owner is ready to recreate the first admin user.
+```text
+master_nodes
+```
 
-## Current Staging Rule
+Masters can toggle `exclude_from_pnc_name` for labels to skip in final inventory names. Masters can sync zero-stock catalog variants, but must not create visible combination lists, pieces, rates, quantities, rolls, or movement rows.
 
-`js/config.js` forces live Supabase outside local hosts. Local development can switch to staging through `dev-environment.html`. Future database experiments and workflow-changing website edits should be tested against staging first, using `--db-url $env:STAGING_DB_URL` for Supabase writes instead of `--linked`.
+## Active Mechanism Tables
+
+```text
+mechanism_groups -> mechanism_options
+mechanism_options -> mechanism_part_links
+master_nodes -> master_mechanism_groups -> mechanism_groups
+```
+
+Mechanisms are feature dimensions such as headrail, cassette, mono mechanism, and laddertape mechanism. Keep them separate from the normal master/sub-master tree.
+
+`mechanism_part_links` links a mechanism option to inventory variants for planned BOM/costing. It must not create stock rows or inventory movement rows.
+
+## Active Migration Lane
+
+Use only `supabase/migrations` for database setup in this clone:
+
+1. `001_new_project_empty_schema.sql`
+2. Create the first Auth user in Supabase Dashboard.
+3. `002_link_first_admin_profile.sql`
+4. Continue through the remaining numbered files, currently through `015_mechanism_part_links_anon_permissions.sql`.
+
+The older import, cleanup, RRP, component, stock-refresh, and historical patch migrations were removed from the active lane. Do not recreate or run them unless the owner explicitly asks to restore legacy data.
+
+Supabase CLI note: the local CLI is linked to `knawjdrsdqgyfzqzddix`, but direct DB commands currently hang without a DB URL/password. Manual SQL Editor runs are still valid unless `VISTA_NEW_DB_URL` is provided.
+
+## Current Environment Rule
+
+`js/config.js` always points browser pages at the isolated New Supabase project `knawjdrsdqgyfzqzddix`. The old browser dev-environment switch was removed, so do not rely on localStorage or URL parameters to change Supabase projects. For another staging database, use explicit direct DB credentials and keep the target documented.
 
 ## Active Supporting Tables
 
@@ -58,25 +90,31 @@ Migration `035_clean_app_data_framework.sql` is the current data wipe path. It p
 
 ## Role Access
 
-| Role | Pages |
-|---|---|
-| `admin` | All pages |
-| `sales` | `orders.html`, `order-detail.html`, `create.html`, `tickets.html`, `ticket-detail.html`, `settings.html`, `account-settings.html` |
-| `executer` | `executer-dashboard.html`, `tickets.html`, `ticket-detail.html`, `account-settings.html` |
-| `customer` | `customer-dashboard.html`, `create-order.html` |
+All roles currently have broad website visibility in the sidebar/page controllers. Keep employee/customer/supplier profile creation, profile mutation, destructive profile actions, master writes, and settings-level admin controls gated to Admin. Role-by-role visibility can be tightened later one page at a time.
 
-## Current Order Status Values
+## Current Workflow Status Values
 
-Use these exact values:
+Ticket states:
 
 ```text
-inquiry
+active
+confirmed
+cancelled
+```
+
+Order states:
+
+```text
+quotation
+active
+approved
 processing
-executed
+direct_order
+cancelled
 completed
 ```
 
-Outward reports should only show completed orders.
+Treat old `inquiry`, `pending`, and `discussing` statuses as backward-compatible active orders only.
 
 ## Inventory Valuation
 

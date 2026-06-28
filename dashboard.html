@@ -3,43 +3,61 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard — Vista Manufacturing</title>
+  <title>Dashboard - Vista Manufacturing</title>
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
 <body>
-  <!-- Dashboard page: shell/sidebar plus summary cards loaded by js/dashboard.js. -->
 <div class="app">
   <aside class="sidebar" id="sidebar"></aside>
   <main class="main">
     <div class="loading-center" id="loading"><div class="spinner spinner-lg"></div></div>
     <div id="content" class="d-none">
-      <div class="page-header">
-        <div><h1 id="greeting">Dashboard</h1><p>Here's what's happening with your inventory</p></div>
+      <div class="page-header dashboard-header">
+        <div>
+          <h1 id="greeting">Dashboard</h1>
+          <p>Operational snapshot for orders, tickets, and inventory health</p>
+        </div>
       </div>
 
-      <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));">
-        <div class="stat-card">
-          <div><div class="stat-label">Orders This Month</div><div class="stat-value" id="s-orders">—</div></div>
-          <div class="stat-icon icon-green"><i class="fa-solid fa-cart-shopping"></i></div>
-        </div>
-        <div class="stat-card">
-          <div><div class="stat-label">Revenue (Executed)</div><div class="stat-value" id="s-revenue">—</div></div>
-          <div class="stat-icon icon-violet"><i class="fa-solid fa-indian-rupee-sign"></i></div>
-        </div>
-        <div class="stat-card">
-          <div><div class="stat-label">Cost (Executed)</div><div class="stat-value" id="s-cost">—</div></div>
-          <div class="stat-icon icon-red"><i class="fa-solid fa-receipt"></i></div>
-        </div>
-        <div class="stat-card">
-          <div><div class="stat-label">Net Profit</div><div class="stat-value" id="s-profit">—</div></div>
-          <div class="stat-icon icon-green"><i class="fa-solid fa-chart-line"></i></div>
-        </div>
-        <div class="stat-card">
+      <div class="stats-grid dashboard-stats">
+        <div class="stat-card stat-card-blue">
           <div>
-            <div class="stat-label">Low Stock Alerts</div>
-            <div class="stat-value" id="s-low">—</div>
-            <div class="stat-sub">Rolls below 5 meters</div>
+            <div class="stat-label">Active Orders</div>
+            <div class="stat-value" id="s-active-orders">-</div>
+            <div class="stat-sub">Not completed or cancelled</div>
+          </div>
+          <div class="stat-icon icon-blue"><i class="fa-solid fa-cart-shopping"></i></div>
+        </div>
+        <div class="stat-card stat-card-green">
+          <div>
+            <div class="stat-label">Completed This Month</div>
+            <div class="stat-value" id="s-completed-month">-</div>
+            <div class="stat-sub">Orders closed this month</div>
+          </div>
+          <div class="stat-icon icon-green"><i class="fa-solid fa-circle-check"></i></div>
+        </div>
+        <div class="stat-card stat-card-amber">
+          <div>
+            <div class="stat-label">In Production</div>
+            <div class="stat-value" id="s-production">-</div>
+            <div class="stat-sub">Processing or executed</div>
+          </div>
+          <div class="stat-icon icon-amber"><i class="fa-solid fa-hammer"></i></div>
+        </div>
+        <div class="stat-card stat-card-violet">
+          <div>
+            <div class="stat-label">Open Tickets</div>
+            <div class="stat-value" id="s-open-tickets">-</div>
+            <div class="stat-sub">Needs sales follow-up</div>
+          </div>
+          <div class="stat-icon icon-violet"><i class="fa-solid fa-ticket"></i></div>
+        </div>
+        <div class="stat-card stat-card-red">
+          <div>
+            <div class="stat-label">Inventory Alerts</div>
+            <div class="stat-value" id="s-low">-</div>
+            <div class="stat-sub">Low stock rolls and batches</div>
           </div>
           <div class="stat-icon icon-red" id="s-low-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
         </div>
@@ -49,21 +67,21 @@
         <div class="card">
           <div class="card-header">
             <h2>Recent Orders</h2>
-            <a href="orders.html">View all →</a>
+            <a href="orders.html">View all</a>
           </div>
           <div class="table-wrap">
             <table>
               <thead><tr>
-                <th>Order ID</th><th>Customer</th><th>Date</th><th>Status</th><th class="tr">Total</th>
+                <th>Order ID</th><th>Customer</th><th>Date</th><th>Status</th>
               </tr></thead>
-              <tbody id="recent-orders"><tr><td colspan="5" class="empty-state">Loading…</td></tr></tbody>
+              <tbody id="recent-orders"><tr><td colspan="4" class="empty-state">Loading...</td></tr></tbody>
             </table>
           </div>
         </div>
 
         <div class="card">
-          <div class="card-header"><h2>Low Stock Rolls</h2></div>
-          <div id="low-stock-list"><div class="empty-state">Loading…</div></div>
+          <div class="card-header"><h2>Inventory Alerts</h2></div>
+          <div id="low-stock-list"><div class="empty-state">Loading...</div></div>
         </div>
       </div>
     </div>
@@ -73,6 +91,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/auth.js"></script>
+<script src="js/test-mode.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/transitions.js"></script>
 <script src="js/sidebar.js"></script>

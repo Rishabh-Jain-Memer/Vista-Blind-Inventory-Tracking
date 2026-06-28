@@ -9,13 +9,15 @@
 let isAdmin = false
 let isAdminOrStaff = false
 let allVariants = []   // [{...inv_variants row, inv_products:{...}, inv_rolls:[...]}]
+let allCutPieces = []
 let allCategories = []
 let allFGItems = []    // fg_stock rows
-let allProductCodes = []
-let productCodeLoadError = ''
+let masterPages = []
+let masterRoots = []
+let masterSyncItems = []
+let masterRootIdByVariantId = new Map()
 let expandedVariants  = new Set()
 let expandedCategories = new Set()
-let currentInventoryTab = 'stock'
 const ROLL_UNITS = ['m', 'ft', 'cm']
 let currentUnit = (() => { const u = getPreferredUnit(); return ROLL_UNITS.includes(u) ? u : 'm' })()
 
@@ -245,15 +247,17 @@ async function init() {
   try {
     const profile = await initSidebar()
     if (!profile) return
-    isAdminOrStaff = profile.role === 'admin'
-    isAdmin = profile.role === 'admin'
+    isAdminOrStaff = true
+    isAdmin = true
     if (isAdminOrStaff) { show('add-stock-btn'); show('add-variant-btn') }
 
     loadExpandState()
     renderUnitToggle()
     document.getElementById('search-input').addEventListener('input', renderTree)
+    document.getElementById('page-filter')?.addEventListener('change', handleMasterPageFilterChange)
     document.getElementById('cat-filter').addEventListener('change', renderTree)
     document.getElementById('status-filter').addEventListener('change', renderTree)
+    document.getElementById('sort-filter')?.addEventListener('change', renderTree)
 
     await loadData()
     show('content')
@@ -267,7 +271,7 @@ async function init() {
 
 // ── Data loading ──────────────────────────────────────────────────────────────
 async function loadData() {
-  const [catRes, varRes, fgRes, codeRes] = await Promise.all([
+  const [catRes, varRes, fgRes, pageRes, rootRes, syncRes, cutPieceRes] = await Promise.all([
     db.from('inv_categories').select('id, name, sub_group').order('name'),
     db.from('inv_variants')
       .select(`
@@ -278,39 +282,39 @@ async function loadData() {
       `)
       .order('name'),
     db.from('fg_stock').select('*').order('name'),
-    db.from('product_codes').select('*').order('stock_category').order('code'),
+    db.from('master_pages').select('id, name, sort_order').order('sort_order').order('name'),
+    db.from('master_nodes').select('id, page_id, name, normalized_name, sort_order').is('parent_id', null).order('sort_order').order('name'),
+    db.from('master_inventory_sync_items').select('root_id, variant_id, is_active').eq('is_active', true),
+    db.from('fabric_cut_pieces')
+      .select('id, variant_id, source_roll_id, source_order_id, source_order_item_id, source_wastage_log_id, width_m, length_m, remaining_length_m, unit, status, created_from, notes, created_at, created_by')
+      .order('created_at', { ascending: false }),
   ])
 
   if (catRes.error) { toast(catRes.error.message, 'error'); return }
   if (varRes.error) { toast(varRes.error.message, 'error'); return }
   if (fgRes.error)  console.warn('fg_stock load error (run migration 023?):', fgRes.error.message)
-  productCodeLoadError = codeRes.error?.message || ''
-  if (codeRes.error) console.warn('product_codes load error (run migration 013_product_codes.sql):', codeRes.error.message)
+  if (pageRes.error) console.warn('master_pages load error (run updated migration 003?):', pageRes.error.message)
+  if (rootRes.error) console.warn('master_nodes root load error:', rootRes.error.message)
+  if (syncRes.error) console.warn('master_inventory_sync_items load error:', syncRes.error.message)
+  if (cutPieceRes.error) console.warn('fabric_cut_pieces load error (run migration 007?):', cutPieceRes.error.message)
 
   allCategories = catRes.data || []
+  allCutPieces = cutPieceRes.error ? [] : (cutPieceRes.data || [])
   allVariants   = (varRes.data || []).map(v => ({
     ...v,
     rolls: v.inv_rolls || [],
+    cutPieces: allCutPieces.filter(p => p.variant_id === v.id),
     product: v.inv_products,
     category: v.inv_products?.inv_categories,
   }))
   allFGItems = fgRes.data || []
-  allProductCodes = codeRes.error ? [] : (codeRes.data || [])
+  masterPages = pageRes.data || []
+  masterRoots = rootRes.data || []
+  masterSyncItems = syncRes.error ? [] : (syncRes.data || [])
+  masterRootIdByVariantId = new Map(masterSyncItems.map(item => [item.variant_id, item.root_id]))
 
-  renderCategoryFilter()
-  renderProductCodeCategoryFilter()
-  renderProductCodes()
+  renderMasterFilters()
   applyInventoryDeepLink()
-}
-
-function switchInventoryTab(tab) {
-  currentInventoryTab = tab === 'codes' ? 'codes' : 'stock'
-  document.getElementById('inventory-stock-panel')?.style && (document.getElementById('inventory-stock-panel').style.display = currentInventoryTab === 'stock' ? '' : 'none')
-  document.getElementById('inventory-codes-panel')?.style && (document.getElementById('inventory-codes-panel').style.display = currentInventoryTab === 'codes' ? '' : 'none')
-  document.getElementById('inv-tab-stock-btn')?.classList.toggle('active', currentInventoryTab === 'stock')
-  document.getElementById('inv-tab-codes-btn')?.classList.toggle('active', currentInventoryTab === 'codes')
-  document.getElementById('inv-stats')?.style && (document.getElementById('inv-stats').style.display = currentInventoryTab === 'stock' ? '' : 'none')
-  if (currentInventoryTab === 'codes') renderProductCodes()
 }
 
 function applyInventoryDeepLink() {
@@ -342,134 +346,150 @@ function applyInventoryDeepLink() {
   }
 }
 
-function renderCategoryFilter() {
-  const sel = document.getElementById('cat-filter')
-  const cur = sel.value
-  sel.innerHTML = '<option value="">All Categories</option>' +
-    allCategories.map(c => `<option value="${c.id}" ${c.id === cur ? 'selected' : ''}>${esc(c.name)}</option>`).join('')
+function renderMasterFilters() {
+  const pageSel = document.getElementById('page-filter')
+  const masterSel = document.getElementById('cat-filter')
+  if (!pageSel || !masterSel) return
+
+  const currentPage = pageSel.value
+  const currentMaster = masterSel.value
+  pageSel.innerHTML = '<option value="">All Master Pages</option>' +
+    [...masterPages]
+      .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || (a.name || '').localeCompare(b.name || ''))
+      .map(page => `<option value="${page.id}" ${page.id === currentPage ? 'selected' : ''}>${esc(page.name)}</option>`)
+      .join('')
+
+  const rootOptions = [...masterRoots]
+    .filter(root => !pageSel.value || root.page_id === pageSel.value)
+    .sort((a, b) => masterRootCompare(a, b, a.name, b.name))
+  const hasCurrentMaster = rootOptions.some(root => root.id === currentMaster)
+  masterSel.innerHTML = '<option value="">All Masters</option>' +
+    rootOptions
+      .map(root => `<option value="${root.id}" ${root.id === currentMaster && hasCurrentMaster ? 'selected' : ''}>${esc(root.name)}</option>`)
+      .join('')
+  if (currentMaster && !hasCurrentMaster) masterSel.value = ''
 }
 
-function renderProductCodeCategoryFilter() {
-  const sel = document.getElementById('product-code-category-filter')
-  if (!sel) return
-  const cur = sel.value
-  const categories = [...new Set(allProductCodes.map(x => x.stock_category).filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b))
-  sel.innerHTML = '<option value="">All Categories</option>' +
-    categories.map(c => `<option value="${esc(c)}" ${c === cur ? 'selected' : ''}>${esc(c)}</option>`).join('')
+function handleMasterPageFilterChange() {
+  renderMasterFilters()
+  renderTree()
 }
 
-function filteredProductCodes() {
-  const q = normText(document.getElementById('product-code-search')?.value || '')
-  const category = document.getElementById('product-code-category-filter')?.value || ''
-  return allProductCodes.filter(item => {
-    if (category && item.stock_category !== category) return false
-    if (!q) return true
-    return inventoryTextMatches(`${item.code} ${item.stock_category || ''} ${item.notes || ''}`, q)
-  })
+function selectedInventoryPageId() {
+  return document.getElementById('page-filter')?.value || ''
 }
 
-function renderProductCodes() {
-  const body = document.getElementById('product-code-body')
-  if (!body) return
-  const rows = filteredProductCodes()
-  text('product-code-count', `${rows.length} code${rows.length !== 1 ? 's' : ''}`)
-  if (!rows.length) {
-    body.innerHTML = productCodeLoadError
-      ? `<tr><td colspan="4" class="empty-state" style="color:#ef4444;">Product codes could not load: ${esc(productCodeLoadError)}<br><span class="text-muted">Re-run migration 013_product_codes.sql, then refresh.</span></td></tr>`
-      : `<tr><td colspan="4" class="empty-state">No product codes found. Run migration 013_product_codes.sql or add a code here.</td></tr>`
-    return
+function selectedInventoryRootId() {
+  return document.getElementById('cat-filter')?.value || ''
+}
+
+function inventoryMatchesMasterFilters(variantOrCategory) {
+  const pageId = selectedInventoryPageId()
+  const rootId = selectedInventoryRootId()
+  if (!pageId && !rootId) return true
+  const root = variantOrCategory?.product || variantOrCategory?.category
+    ? masterRootForVariant(variantOrCategory)
+    : masterRootForCategory(variantOrCategory)
+  if (rootId) return root?.id === rootId
+  if (pageId) return root?.page_id === pageId
+  return true
+}
+
+function normInventoryName(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+function stockQty(v, status = 'in_stock') {
+  return v.rolls
+    .filter(r => !status || r.status === status)
+    .reduce((sum, r) => sum + Number(r.remaining_length || 0), 0)
+}
+
+function stockValue(v, status = 'in_stock') {
+  return v.rolls
+    .filter(r => !status || r.status === status)
+    .reduce((sum, r) => sum + (Number(r.stock_value || 0) || Number(r.remaining_length || 0) * Number(r.purchase_rate || v.purchase_rate || 0)), 0)
+}
+
+function cutPiecesForVariant(variantId, status = null) {
+  return allCutPieces.filter(p => p.variant_id === variantId && (!status || p.status === status))
+}
+
+function cutPiecesForRoll(rollId, status = null) {
+  return allCutPieces.filter(p => p.source_roll_id === rollId && (!status || p.status === status))
+}
+
+function cutPieceArea(piece) {
+  return Number(piece.width_m || 0) * Number(piece.remaining_length_m || 0)
+}
+
+function masterRootForCategory(category) {
+  const catName = normInventoryName(category?.name || '')
+  if (!catName) return null
+  return masterRoots.find(root => {
+    const rootName = normInventoryName(root.name)
+    return catName === rootName || catName.startsWith(`${rootName} `) || catName.includes(rootName)
+  }) || null
+}
+
+function masterRootById(rootId) {
+  return masterRoots.find(root => root.id === rootId) || null
+}
+
+function masterRootForVariant(variant) {
+  return masterRootById(masterRootIdByVariantId.get(variant?.id)) || masterRootForCategory(variant?.category)
+}
+
+function masterRootForSection(section) {
+  const linkedVariantRoot = (section?.variants || [])
+    .map(masterRootForVariant)
+    .find(Boolean)
+  return linkedVariantRoot || masterRootForCategory(section?.cat)
+}
+
+function masterPageSortForRoot(root) {
+  if (!root) return 999999
+  const page = masterPages.find(item => item.id === root.page_id)
+  if (!root.page_id) {
+    const maxPageSort = masterPages.reduce((max, page) => Math.max(max, Number(page.sort_order || 0)), 0)
+    return maxPageSort + 1000
   }
-  body.innerHTML = rows.map(item => `
-    <tr>
-      <td>${esc(item.stock_category || '-')}</td>
-      <td class="fw-600">${esc(item.code || '-')}</td>
-      <td>${item.is_active === false ? '<span class="badge badge-exhausted">Inactive</span>' : '<span class="badge badge-active">Active</span>'}</td>
-      <td style="text-align:right;white-space:nowrap;">
-        <button class="btn btn-ghost btn-sm" onclick="openProductCodeModal('${item.id}')" title="Edit code"><i class="fa-solid fa-pen"></i></button>
-        ${isAdmin ? `<button class="btn btn-ghost btn-sm" style="color:#ef4444" onclick="deleteProductCode('${item.id}','${safeArg(item.code)}')" title="Delete code"><i class="fa-solid fa-trash"></i></button>` : ''}
-      </td>
-    </tr>
-  `).join('')
+  return Number(page?.sort_order ?? 999999)
 }
 
-function openProductCodeModal(id = '') {
-  const item = id ? allProductCodes.find(x => x.id === id) : null
-  openModal(item ? 'Edit Product Code' : 'Add Product Code', `
-    <div id="pc-alert" class="alert alert-error"></div>
-    <div class="form-row cols-2">
-      <div class="form-group">
-        <label>Stock Category <span style="color:#ef4444">*</span></label>
-        <input id="pc-category" value="${esc(item?.stock_category || '')}" placeholder="e.g. Roller Blinds">
-      </div>
-      <div class="form-group">
-        <label>Final Blinds Code <span style="color:#ef4444">*</span></label>
-        <input id="pc-code" value="${esc(item?.code || '')}" placeholder="e.g. Roller Blind Blackout Bamberg 01">
-      </div>
-    </div>
-    <div class="form-row cols-2">
-      <div class="form-group">
-        <label>Status</label>
-        <select id="pc-active">
-          <option value="true" ${item?.is_active === false ? '' : 'selected'}>Active</option>
-          <option value="false" ${item?.is_active === false ? 'selected' : ''}>Inactive</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Notes</label>
-        <input id="pc-notes" value="${esc(item?.notes || '')}" placeholder="Optional">
-      </div>
-    </div>
-    <div class="modal-footer" style="padding:0;margin-top:1rem;">
-      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" id="pc-save-btn" onclick="saveProductCode('${id}')">
-        <i class="fa-solid fa-check"></i> ${item ? 'Save Changes' : 'Add Code'}
-      </button>
-    </div>
-  `)
+function masterRootCompare(rootA, rootB, fallbackA = '', fallbackB = '') {
+  return masterPageSortForRoot(rootA) - masterPageSortForRoot(rootB) ||
+    Number(rootA?.sort_order ?? 9999) - Number(rootB?.sort_order ?? 9999) ||
+    (rootA?.name || fallbackA || '').localeCompare(rootB?.name || fallbackB || '')
 }
 
-async function saveProductCode(id = '') {
-  hideAlert('pc-alert')
-  const stockCategory = val('pc-category').trim()
-  const code = val('pc-code').trim()
-  const isActive = document.getElementById('pc-active')?.value !== 'false'
-  const notes = val('pc-notes').trim() || null
-  if (!stockCategory) { showAlert('pc-alert', 'Stock category is required'); return }
-  if (!code) { showAlert('pc-alert', 'Product code is required'); return }
-  disable('pc-save-btn')
-  const payload = {
-    stock_category: stockCategory,
-    code,
-    normalized_code: normText(code),
-    is_active: isActive,
-    notes,
-    updated_at: new Date().toISOString(),
-  }
-  const result = id
-    ? await db.from('product_codes').update(payload).eq('id', id)
-    : await db.from('product_codes').insert(payload)
-  if (result.error) {
-    showAlert('pc-alert', result.error.message)
-    disable('pc-save-btn', false)
-    return
-  }
-  await logActivity(id ? 'update' : 'create', 'product_code', id || code, code, { stock_category: stockCategory })
-  toast(id ? 'Product code updated' : 'Product code added')
-  closeModal()
-  await loadData()
-  switchInventoryTab('codes')
+function categoryCompare(a, b) {
+  const rootA = masterRootForCategory(a)
+  const rootB = masterRootForCategory(b)
+  return masterRootCompare(rootA, rootB, a?.name || '', b?.name || '') ||
+    (a?.name || '').localeCompare(b?.name || '')
 }
 
-async function deleteProductCode(id, encodedCode) {
-  const code = decodeURIComponent(encodedCode || 'this product code')
-  if (!confirm(`Delete product code "${code}"?`)) return
-  const { error } = await db.from('product_codes').delete().eq('id', id)
-  if (error) { toast(error.message, 'error'); return }
-  await logActivity('delete', 'product_code', id, code)
-  toast('Product code deleted')
-  await loadData()
-  switchInventoryTab('codes')
+function variantCompare(a, b, sortMode = 'structure', status = 'in_stock') {
+  if (sortMode === 'stock') return stockQty(b, status) - stockQty(a, status) || variantCompare(a, b, 'name', status)
+  if (sortMode === 'value') return stockValue(b, status) - stockValue(a, status) || variantCompare(a, b, 'name', status)
+  const rootA = masterRootForVariant(a)
+  const rootB = masterRootForVariant(b)
+  const rootOrder = masterRootCompare(rootA, rootB, a.category?.name || '', b.category?.name || '')
+  if (rootOrder) return rootOrder
+  return (a.product?.name || '').localeCompare(b.product?.name || '') ||
+    (a.name || '').localeCompare(b.name || '') ||
+    Number(a.width_m || 0) - Number(b.width_m || 0)
+}
+
+function inventorySectionCompare(a, b, sortMode = 'structure') {
+  const rootA = masterRootForSection(a)
+  const rootB = masterRootForSection(b)
+  const rootOrder = masterRootCompare(rootA, rootB, a.cat?.name || '', b.cat?.name || '')
+  if (rootOrder) return rootOrder
+  if (sortMode === 'name') return (a.cat?.name || '').localeCompare(b.cat?.name || '')
+  return categoryCompare(a.cat, b.cat) ||
+    (a.cat?.name || '').localeCompare(b.cat?.name || '')
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -479,17 +499,16 @@ function isFinishedGoodsCategory(category) {
   return ['fg', 'finished goods'].includes(String(category?.sub_group || '').toLowerCase())
 }
 
-function categoryMatchesSubgroup(category, subgroup) {
-  if (!subgroup) return true
-  const group = String(category?.sub_group || '')
-  if (subgroup === 'FG') return group === 'FG' || group === 'Finished Goods'
-  return group === subgroup
+function categoryMatchesSubgroup() {
+  return true
 }
 
 function variantAreaSqm(v) {
   const rollW = v.width_m || 0
-  return v.rolls.filter(r => r.status === 'in_stock')
+  const rollArea = v.rolls.filter(r => r.status === 'in_stock')
     .reduce((s, r) => s + Number(r.remaining_length || 0) * rollW, 0)
+  const pieceArea = cutPiecesForVariant(v.id, 'available').reduce((s, p) => s + cutPieceArea(p), 0)
+  return rollArea + pieceArea
 }
 
 function renderStats(filteredVariants, filteredFGItems, subgroupF) {
@@ -546,7 +565,7 @@ function renderStats(filteredVariants, filteredFGItems, subgroupF) {
     </div>` : `
     <div class="stat-card">
       <div>
-        <div class="stat-label">Fabric in SQM</div>
+        <div class="stat-label">Stock Area</div>
         <div class="stat-value">${fabricSqm.toFixed(0)}</div>
         <div class="text-xs text-muted" style="margin-top:2px;">sq metres in stock</div>
       </div>
@@ -565,9 +584,9 @@ function renderStats(filteredVariants, filteredFGItems, subgroupF) {
     </div>` : `
     <div class="stat-card">
       <div>
-        <div class="stat-label">Units of Components</div>
+        <div class="stat-label">Stock Units</div>
         <div class="stat-value">${fmt(componentUnits)}</div>
-        <div class="text-xs text-muted" style="margin-top:2px;">parts &amp; hardware in stock</div>
+        <div class="text-xs text-muted" style="margin-top:2px;">non-area stock in hand</div>
       </div>
       <div class="stat-icon icon-indigo"><i class="fa-solid fa-boxes-stacked"></i></div>
     </div>`
@@ -611,13 +630,11 @@ function switchUnit(u) {
 // ── Tree rendering ────────────────────────────────────────────────────────────
 function renderTree() {
   const query     = val('search-input').trim()
-  const catId     = document.getElementById('cat-filter').value
   const statusF   = document.getElementById('status-filter').value
-  const subgroupF = document.getElementById('subgroup-filter')?.value || ''
+  const subgroupF = ''
+  const sortMode  = document.getElementById('sort-filter')?.value || 'structure'
 
-  // Show FG section only when: no subgroup filter (all types) or FG explicitly selected
-  // AND no specific category is selected (category filter would only apply to variants)
-  const showFG      = (subgroupF === '' || subgroupF === 'FG') && !catId
+  const showFG      = false
   const showVariants = true
 
   // ── Filter variants ──
@@ -627,16 +644,19 @@ function renderTree() {
   // (so stats always show totals for the type/category selected, not just "in stock" items)
   let statsVariants = []
   if (showVariants) {
-    emptyCategories = allCategories.filter(c => {
-      if (!categoryMatchesSubgroup(c, subgroupF)) return false
-      if (catId && c.id !== catId) return false
-      if (query && !inventoryTextMatches(`${c.name} ${c.sub_group || ''}`, query)) return false
-      return true
-    })
+    const shouldShowEmptyCategories = !subgroupF && !statusF
+    emptyCategories = shouldShowEmptyCategories
+      ? allCategories.filter(c => {
+          if (!categoryMatchesSubgroup(c, subgroupF)) return false
+          if (!inventoryMatchesMasterFilters(c)) return false
+          if (query && !inventoryTextMatches(`${c.name} ${c.sub_group || ''}`, query)) return false
+          return true
+        })
+      : []
 
     statsVariants = allVariants.filter(v => {
       if (!categoryMatchesSubgroup(v.category, subgroupF)) return false
-      if (catId && v.category?.id !== catId) return false
+      if (!inventoryMatchesMasterFilters(v)) return false
       return true
     })
     if (query) {
@@ -647,7 +667,9 @@ function renderTree() {
   if (showVariants) {
     variants = statsVariants.filter(v => {
       const rolls = statusF ? v.rolls.filter(r => r.status === statusF) : v.rolls
-      return rolls.length > 0 || !statusF || (statusF === 'in_stock' && v.rolls.length === 0)
+      const pieceStatus = statusF === 'in_stock' ? 'available' : (statusF === 'depleted' ? 'depleted' : null)
+      const pieces = statusF ? cutPiecesForVariant(v.id, pieceStatus) : cutPiecesForVariant(v.id)
+      return !statusF || rolls.length > 0 || pieces.length > 0
     })
   }
 
@@ -682,12 +704,17 @@ function renderTree() {
       if (!groups.has(key)) groups.set(key, { cat: v.category, variants: [] })
       groups.get(key).variants.push(v)
     }
-    const sections = [...groups.values()].sort((a, b) =>
-      (a.cat?.name || '').localeCompare(b.cat?.name || '')
-    )
+    const sections = [...groups.values()].sort((a, b) => inventorySectionCompare(a, b, sortMode))
     // When a search query is active, force all matching categories open so results are visible
-    if (query) sections.forEach(g => expandedCategories.add(g.cat?.id || 'unknown'))
-    treeHTML += sections.map(g => renderCategorySection(g, statusF)).join('')
+    if (query) {
+      sections.forEach(g => expandedCategories.add(g.cat?.id || 'unknown'))
+      variants.forEach(v => expandedVariants.add(v.id))
+      saveExpandState()
+    }
+    treeHTML += sections.map(g => ({
+      ...g,
+      variants: [...g.variants].sort((a, b) => variantCompare(a, b, sortMode, statusF)),
+    })).map(g => renderCategorySection(g, statusF)).join('')
   }
 
   // ── Append FG section at bottom ──
@@ -761,6 +788,8 @@ function renderVariantRow(v, statusF) {
   const filteredRolls = statusF ? v.rolls.filter(r => r.status === statusF) : v.rolls
   const inStock = v.rolls.filter(r => r.status === 'in_stock')
   const totalRem = inStock.reduce((s, r) => s + Number(r.remaining_length || 0), 0)
+  const availablePieces = cutPiecesForVariant(v.id, 'available')
+  const pieceAreaSqm = availablePieces.reduce((s, p) => s + cutPieceArea(p), 0)
   const isExpanded = expandedVariants.has(v.id)
   const isFab = isFabric(v)
   const widthDisp = v.width_m ? `${v.width_m}m` : '—'
@@ -768,7 +797,7 @@ function renderVariantRow(v, statusF) {
   const lowStockThreshold = isFab ? 37.5 : (v.unit === 'm' ? 5 : 10)
   const lowStock = totalRem > 0 && totalRem < lowStockThreshold
   const batchWord = isFab ? 'roll' : 'batch'
-  const areaSqm = isFab && v.width_m ? totalRem * v.width_m : null
+  const areaSqm = isFab && v.width_m ? (totalRem * v.width_m) + pieceAreaSqm : null
 
   return `
   <div class="inv-variant-row" id="var-row-${v.id}">
@@ -777,14 +806,15 @@ function renderVariantRow(v, statusF) {
         <i class="fa-solid fa-chevron-right inv-chevron ${isExpanded ? 'rotated' : ''}" id="chevron-${v.id}"></i>
         <div style="min-width:0;">
           <div class="fw-600" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(v.name)}</div>
-          <div class="text-xs text-muted">${esc(v.product?.name || '')} &bull; ${isFab ? `${filteredRolls.length} roll${filteredRolls.length !== 1 ? 's' : ''}` : `${filteredRolls.length} ${batchWord}${filteredRolls.length !== 1 ? 's' : ''}`}</div>
+          <div class="text-xs text-muted">${esc(v.product?.name || '')} &bull; ${isFab ? `${filteredRolls.length} roll${filteredRolls.length !== 1 ? 's' : ''}${availablePieces.length ? ` &bull; ${availablePieces.length} cut piece${availablePieces.length !== 1 ? 's' : ''}` : ''}` : `${filteredRolls.length} ${batchWord}${filteredRolls.length !== 1 ? 's' : ''}`}</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:16px;flex-shrink:0;">
         <div class="text-xs text-muted" style="text-align:right;">
           ${isFab && v.width_m ? `<div>Width: <strong>${widthDisp}</strong></div>` : ''}
           ${v.base_rate_sqm ? `<div>Rate: <strong>₹${Number(v.base_rate_sqm).toFixed(2)}/sqm</strong></div>` : (v.purchase_rate ? `<div>Rate: <strong>₹${Number(v.purchase_rate).toFixed(2)}/${v.unit}</strong></div>` : '')}
-          <div>Remaining: <strong style="color:${lowStock ? '#f59e0b' : '#059669'}">${isFab ? `${totalRem.toFixed(1)} m` : fmtQty(totalRem, v.unit)}</strong>${areaSqm !== null ? ` <span style="color:#6b7280;">= ${areaSqm.toFixed(1)} sqm</span>` : ''}</div>
+          <div>Remaining: <strong style="color:${lowStock ? '#f59e0b' : '#059669'}">${isFab ? `${totalRem.toFixed(1)} m rolls` : fmtQty(totalRem, v.unit)}</strong>${areaSqm !== null ? ` <span style="color:#6b7280;">= ${areaSqm.toFixed(1)} sqm</span>` : ''}</div>
+          ${isFab && pieceAreaSqm > 0 ? `<div>Cut pieces: <strong>${pieceAreaSqm.toFixed(2)} sqm</strong></div>` : ''}
         </div>
         <div style="display:flex;gap:4px;">
           ${isAdminOrStaff ? `
@@ -801,17 +831,23 @@ function renderVariantRow(v, statusF) {
       </div>
     </div>
     <div class="inv-rolls-body ${isExpanded ? '' : 'd-none'}" id="rolls-body-${v.id}">
-      ${renderRollsTable(filteredRolls, v.id)}
+      ${renderRollsTable(filteredRolls, v.id, statusF)}
     </div>
   </div>`
 }
 
-function renderRollsTable(rolls, variantId) {
-  if (!rolls.length) {
-    return `<div class="text-xs text-muted" style="padding:12px 40px;">No batches match current filter.</div>`
-  }
+function renderRollsTable(rolls, variantId, statusF = '') {
   const v = allVariants.find(x => x.id === variantId)
+  const pieceStatus = statusF === 'in_stock' ? 'available' : (statusF === 'depleted' ? 'depleted' : null)
+  const pieces = cutPiecesForVariant(variantId, pieceStatus)
+  if (!rolls.length && !pieces.length) {
+    return `<div class="text-xs text-muted" style="padding:12px 40px;">No batches or cut pieces match current filter.</div>`
+  }
   const fab = isFabric(v)
+  const rows = [
+    ...rolls.flatMap(r => [renderRollRow(r, variantId), ...cutPiecesForRoll(r.id, pieceStatus).map(p => renderCutPieceRow(p, variantId))]),
+    ...pieces.filter(p => !p.source_roll_id || !rolls.some(r => r.id === p.source_roll_id)).map(p => renderCutPieceRow(p, variantId)),
+  ].join('')
   return `
   <div class="table-wrap" style="margin:0 0 8px 40px;">
     <table style="font-size:13px;">
@@ -826,7 +862,7 @@ function renderRollsTable(rolls, variantId) {
         ${(isAdminOrStaff || isAdmin) ? '<th style="text-align:right;">Actions</th>' : ''}
       </tr></thead>
       <tbody>
-        ${rolls.map(r => renderRollRow(r, variantId)).join('')}
+        ${rows}
       </tbody>
     </table>
   </div>`
@@ -889,6 +925,32 @@ function renderRollRow(r, variantId) {
         </div>
       </td>
     ` : ''}
+  </tr>`
+}
+
+function renderCutPieceRow(piece, variantId) {
+  const v = allVariants.find(x => x.id === variantId)
+  const remaining = Number(piece.remaining_length_m || 0)
+  const area = cutPieceArea(piece)
+  const statusClass = piece.status === 'available' ? 'badge-active' : 'badge-exhausted'
+  const sourceOrder = piece.source_order_id ? piece.source_order_id.slice(0, 8).toUpperCase() : null
+  return `<tr style="background:#f8fafc;">
+    <td class="fw-600" style="font-family:monospace;color:#475569;">
+      <i class="fa-solid fa-scissors" style="margin-right:6px;color:#f59e0b;"></i>Cut Piece
+    </td>
+    <td class="text-muted">${piece.created_at ? fmtDate(piece.created_at) : '-'}</td>
+    <td class="text-muted text-xs">
+      ${sourceOrder ? `<div>From order ${esc(sourceOrder)}</div>` : '<div>Generated piece</div>'}
+      ${piece.source_roll_id ? `<div>Source roll linked</div>` : ''}
+    </td>
+    <td class="text-muted">${Number(piece.width_m || 0).toFixed(3)}m x ${Number(piece.length_m || 0).toFixed(3)}m</td>
+    <td>
+      <span class="fw-600">${Number(piece.width_m || 0).toFixed(3)}m x ${remaining.toFixed(3)}m</span>
+      <div class="text-xs text-muted">${area.toFixed(3)} sqm available</div>
+    </td>
+    <td class="text-muted">Generated</td>
+    <td><span class="badge ${statusClass}">${esc(piece.status || 'available')}</span></td>
+    ${(isAdminOrStaff || isAdmin) ? '<td></td>' : ''}
   </tr>`
 }
 
@@ -967,8 +1029,8 @@ async function deleteCategory(categoryId, encodedName) {
   await loadData()
 }
 
-// ── Add Stock — unified modal (Fabric / Parts & Hardware / Finished Goods) ─────
-let restockType  = 'fabric'   // 'fabric' | 'parts' | 'fg'
+// ── Add Stock — master-based variant restock ─────
+let restockType  = 'stock'
 let restockItems = []
 const rsSelVar   = {}         // {rowId: variant obj | null}
 const rsVarDropOpen = {}      // {rowId: bool}
@@ -976,12 +1038,7 @@ const rsQtyUnit  = {}         // {rowId: 'm' | 'ft'} — unit for fabric qty inp
 
 function openRestockModal(preselectedVariantId) {
   const preV = preselectedVariantId ? allVariants.find(v => v.id === preselectedVariantId) : null
-  // Auto-detect type from preselected variant
-  if (preV) {
-    restockType = isFabric(preV) ? 'fabric' : 'parts'
-  } else {
-    restockType = 'fabric'
-  }
+  restockType = 'stock'
   restockItems = [{ id: Date.now() }]
   Object.keys(rsSelVar).forEach(k => delete rsSelVar[k])
   Object.keys(rsVarDropOpen).forEach(k => delete rsVarDropOpen[k])
@@ -990,20 +1047,7 @@ function openRestockModal(preselectedVariantId) {
   openModal('Add Stock', `
     <div id="restock-alert" class="alert alert-error"></div>
 
-    <!-- Type selector -->
-    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
-      <button id="rst-fabric" class="type-toggle-btn ${restockType==='fabric'?'active':''}" onclick="setRestockType('fabric')">
-        <i class="fa-solid fa-scroll"></i> Fabric
-      </button>
-      <button id="rst-parts" class="type-toggle-btn ${restockType==='parts'?'active':''}" onclick="setRestockType('parts')">
-        <i class="fa-solid fa-boxes-stacked"></i> Parts &amp; Hardware
-      </button>
-      <button id="rst-fg" class="type-toggle-btn ${restockType==='fg'?'active':''}" onclick="setRestockType('fg')">
-        <i class="fa-solid fa-tag"></i> Finished Goods
-      </button>
-    </div>
-
-    <!-- Fabric / Parts section -->
+    <!-- Master inventory section -->
     <div id="rs-stock-section">
       <div class="form-row cols-2" style="margin-bottom:4px;">
         <div class="form-group">
@@ -1128,8 +1172,7 @@ function setRestockType(type) {
 // ── Variant searchable dropdown per row ───────────────────────────────────────
 
 function getVarsForCurrentType() {
-  const sg = restockType === 'fabric' ? 'Fabric' : 'Parts'
-  return allVariants.filter(v => v.category?.sub_group === sg)
+  return allVariants
 }
 
 function renderRsVarList(rowId, query) {
@@ -1437,14 +1480,6 @@ function openAddVariantModal() {
   openModal('Create Stock Master', `
     <div id="av-alert" class="alert alert-error"></div>
     <p class="text-sm text-muted" style="margin-bottom:12px;">Create a category-only master, or add a blank product/variant that appears in inventory without stock.</p>
-    <div class="form-group">
-      <label>Item Type <span style="color:#ef4444">*</span></label>
-      <select id="av-type">
-        <option value="Fabric">Fabric</option>
-        <option value="Parts">Parts / Hardware</option>
-        <option value="FG">Finished Goods</option>
-      </select>
-    </div>
     <div class="form-row cols-2">
       <div class="form-group">
         <label>Category <span style="color:#ef4444">*</span></label>
@@ -1508,7 +1543,7 @@ function onCatChange() {
 async function saveNewVariant() {
   hideAlert('av-alert')
   let catId = document.getElementById('av-cat').value
-  const type = document.getElementById('av-type')?.value || 'Fabric'
+  const type = 'Master'
   const newCatName = val('av-newcat')
   const productName = val('av-product').trim()
   const variantName = val('av-name').trim() || productName
@@ -1522,11 +1557,6 @@ async function saveNewVariant() {
     catId = ''
   }
   if (!catId && !newCatName) { showAlert('av-alert', 'Please select or create a category'); return }
-  if (productName && isFabricCategoryInput(catId, newCatName, type) && !hasMeaningfulNameOverlap(productName, variantName)) {
-    showAlert('av-alert', 'Product name does not match this fabric variant. For fabrics, use the fabric family/product name that appears in the variant, for example "Torrent" for a Torrent variant.')
-    return
-  }
-
   // Auto-calc base_rate_sqm if width + rate provided
   if (!sqmRate && rate && widthM && widthM > 0) sqmRate = Number((rate / widthM).toFixed(4))
 
@@ -1719,7 +1749,7 @@ async function saveRollEdit(rollId, variantId) {
   const v = allVariants.find(x => x.id === variantId)
   const r = v?.rolls.find(x => x.id === rollId)
   if (!r) return
-  const currentUserId = (await db.auth.getUser()).data.user?.id || null
+  const currentUserId = AUTH.currentUserId()
 
   const batchCode = val('er-batch').toUpperCase()
   const date      = val('er-date') || null
@@ -1785,6 +1815,8 @@ async function deleteRoll(rollId, encodedBatchCode, variantId) {
   const v = allVariants.find(x => x.id === variantId)
   const movementCount = await countMovementsForRolls([rollId])
   if (!confirm(`Delete stock row "${batchCode}"?\n\nThis will remove ${movementCount} report/history movement${movementCount !== 1 ? 's' : ''} for ${v?.name || 'this item'} and cannot be undone.`)) return
+  const pieceDel = await db.from('fabric_cut_pieces').delete().eq('source_roll_id', rollId)
+  if (pieceDel.error) { toast(pieceDel.error.message, 'error'); return }
   const moveDel = await db.from('inv_movements').delete().eq('roll_id', rollId)
   if (moveDel.error) { toast(moveDel.error.message, 'error'); return }
   const { error } = await db.from('inv_rolls').delete().eq('id', rollId)
@@ -1873,36 +1905,60 @@ async function openVariantHistoryModal(variantId) {
   const v = allVariants.find(x => x.id === variantId)
   openModal(`History — ${v?.name || 'Variant'}`, `<div class="spinner" style="margin:20px auto;"></div>`)
 
-  const { data, error } = await db
-    .from('inv_movements')
-    .select('*')
-    .eq('variant_id', variantId)
-    .order('created_at', { ascending: false })
-    .limit(100)
+  const [movementRes, pieceRes] = await Promise.all([
+    db
+      .from('inv_movements')
+      .select('*')
+      .eq('variant_id', variantId)
+      .order('created_at', { ascending: false })
+      .limit(100),
+    db
+      .from('fabric_cut_pieces')
+      .select('id, variant_id, source_roll_id, source_order_id, width_m, length_m, remaining_length_m, status, created_at, created_by')
+      .eq('variant_id', variantId)
+      .order('created_at', { ascending: false }),
+  ])
 
-  if (error) { html('modal-body', `<p class="text-muted">${error.message}</p>`); return }
+  if (movementRes.error) { html('modal-body', `<p class="text-muted">${movementRes.error.message}</p>`); return }
+  if (pieceRes.error) console.warn('cut piece history failed:', pieceRes.error.message)
 
-  if (!data?.length) {
+  const pieceMovements = (pieceRes.data || []).map(p => ({
+    id: `piece-${p.id}`,
+    roll_id: p.source_roll_id,
+    variant_id: p.variant_id,
+    movement_type: 'cut_piece_created',
+    quantity: Number(p.width_m || 0) * Number(p.length_m || 0),
+    unit: 'sqm',
+    rate: null,
+    reference: p.source_order_id ? `Order ${p.source_order_id.slice(0, 8).toUpperCase()}` : '',
+    note: `${Number(p.width_m || 0).toFixed(3)}m x ${Number(p.length_m || 0).toFixed(3)}m piece created`,
+    performed_by: p.created_by,
+    created_at: p.created_at,
+    _isCutPiece: true,
+  }))
+  const rows = [...(movementRes.data || []), ...pieceMovements]
+
+  if (!rows.length) {
     html('modal-body', `<p class="text-muted text-sm" style="padding:16px;">No movement history yet.</p>`)
     return
   }
 
-  const movements = collapseDuplicateMovements(data)
+  const movements = collapseDuplicateMovements(rows).sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
   const performerIds = [...new Set(movements.map(m => m.performed_by).filter(Boolean))]
   let performerNames = {}
   if (performerIds.length) {
     const { data: profileRows, error: profileErr } = await db
       .from('profiles')
-      .select('id, full_name, email')
+      .select('id, full_name, username')
       .in('id', performerIds)
     if (profileErr) {
       console.warn('movement performer lookup failed:', profileErr.message)
     } else {
-      performerNames = Object.fromEntries((profileRows || []).map(p => [p.id, p.full_name || p.email || p.id]))
+      performerNames = Object.fromEntries((profileRows || []).map(p => [p.id, p.full_name || p.username || p.id]))
     }
   }
 
-  const typeColors = { inflow: '#059669', restock: '#2563eb', outflow: '#ef4444', adjustment: '#f59e0b' }
+  const typeColors = { inflow: '#059669', restock: '#2563eb', outflow: '#ef4444', adjustment: '#f59e0b', cut_piece_created: '#7c3aed' }
 
   html('modal-body', `
     <div class="table-wrap" style="max-height:400px;overflow-y:auto;">
@@ -1918,7 +1974,7 @@ async function openVariantHistoryModal(variantId) {
         <tbody>
           ${movements.map(m => `<tr>
             <td class="text-muted">${fmtDateTime(m.created_at)}</td>
-            <td><span style="color:${typeColors[m.movement_type] || '#6b7280'};font-weight:600;text-transform:capitalize;">${m.movement_type}</span></td>
+            <td><span style="color:${typeColors[m.movement_type] || '#6b7280'};font-weight:600;text-transform:capitalize;">${esc(String(m.movement_type || '').replace(/_/g, ' '))}</span></td>
             <td class="fw-600" style="color:${m.quantity >= 0 ? '#059669' : '#ef4444'}">${m.quantity >= 0 ? '+' : ''}${Number(m.quantity).toFixed(3)} ${m.unit || ''}</td>
             <td class="text-muted">${m.rate ? fmt$(m.rate) : '—'}</td>
             <td class="text-muted text-xs">${esc(m.reference || m.note || '—')}${m._duplicateCount > 1 ? ` <span class="badge">${m._duplicateCount}x</span>` : ''}</td>
@@ -2018,11 +2074,15 @@ function inventorySearch(items, query, getText) {
 }
 
 function variantSearchText(v) {
+  const root = masterRootForVariant(v)
+  const page = root ? masterPages.find(item => item.id === root.page_id) : null
   return [
     v.name,
     v.product?.name,
     v.category?.name,
     v.category?.sub_group,
+    root?.name,
+    page?.name,
     v.unit,
     v.width_m,
     v.purchase_rate,
@@ -2037,6 +2097,15 @@ function variantSearchText(v) {
       r.purchase_rate,
       r.remaining_length,
       r.original_length,
+    ]),
+    ...(v.cutPieces || []).flatMap(p => [
+      'cut piece',
+      p.status,
+      p.width_m,
+      p.length_m,
+      p.remaining_length_m,
+      p.source_order_id,
+      p.notes,
     ]),
   ].filter(x => x != null && x !== '').join(' ')
 }
@@ -2262,7 +2331,7 @@ async function saveFGItem(existingId) {
   if (existingId) {
     ;({ error } = await db.from('fg_stock').update(payload).eq('id', existingId))
   } else {
-    payload.created_by = (await db.auth.getUser()).data.user?.id || null
+    payload.created_by = AUTH.currentUserId()
     ;({ error } = await db.from('fg_stock').insert(payload))
   }
 

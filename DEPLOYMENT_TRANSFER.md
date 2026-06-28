@@ -36,7 +36,7 @@ After transfer, verify these still work:
 - `SUPABASE_URL` and anon/publishable key in `js/config.js` are still correct.
 - `supabase/functions/admin-users` is deployed.
 - `SUPABASE_SERVICE_ROLE_KEY` is set as a Supabase Edge Function secret.
-- Migration `012_security_hardening.sql` has been applied on the live project.
+- The current clone uses the three-file SQL lane in `supabase/migrations`; do not rely on old numbered migrations for the new website database.
 - Anonymous table reads are blocked by RLS except for intended authenticated flows.
 
 ## GitHub Pages Hosting
@@ -83,4 +83,4 @@ supabase functions deploy admin-users --project-ref akjybtvaezxayfwtpifd
 - Supabase Auth login works from the GitHub Pages production URL.
 - Admin employee create/update/reset/delete works through the Edge Function.
 - Executer order execution works through `execute_order`.
-- Inventory, Create Order, Orders, Reports, Profiles, Components, and Wastage pages load without console errors.
+- Inventory, Create, Orders, Reports, Profiles, Masters, and embedded Tickets load without console errors.

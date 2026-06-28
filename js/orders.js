@@ -34,7 +34,7 @@ function orderDisplayDate(o) {
 
 function orderStatus(o) {
   const s = String(o?.status || '').toLowerCase()
-  if (s === 'discussing' || s === 'pending') return 'inquiry'
+  if (s === 'discussing' || s === 'pending' || s === 'inquiry') return 'active'
   if (s === 'in progress') return 'processing'
   return s
 }
@@ -47,9 +47,9 @@ async function init() {
   const profile = await initSidebar()
   if (!profile) return
   currentProfile = profile
-  isAdminOrStaff = profile.role === 'admin'
-  isAdmin = profile.role === 'admin'
-  isSales = profile.role === 'sales'
+  isAdminOrStaff = true
+  isAdmin = true
+  isSales = false
   profileCustomerFilter = new URLSearchParams(window.location.search).get('cust')
 
   document.getElementById('search-input').addEventListener('input', renderOrders)
@@ -79,7 +79,7 @@ async function init() {
 }
 
 async function loadOrders() {
-  const withInvoiceSelect = 'id, order_uid, dealer_name, customer_name, source, source_order_no, source_bill_no, invoice_number, invoice_date, status, total_amount, cost_amount, notes, order_date, created_at, deleted_at, cust_id, customer_id, customers!cust_id(name, phone), order_components(id, deducted, actual_qty, planned_qty)'
+  const withInvoiceSelect = 'id, order_uid, dealer_name, customer_name, source, source_order_no, source_bill_no, invoice_number, invoice_date, status, approval_status, fulfilment_mode, total_amount, cost_amount, notes, order_date, created_at, deleted_at, cust_id, customer_id, customers!cust_id(name, phone), order_components(id, deducted, actual_qty, planned_qty)'
   const fallbackSelect = 'id, order_uid, dealer_name, customer_name, source, source_order_no, source_bill_no, status, total_amount, cost_amount, notes, order_date, created_at, deleted_at, cust_id, customer_id, customers!cust_id(name, phone), order_components(id, deducted, actual_qty, planned_qty)'
   let query = db
     .from('orders')
@@ -149,7 +149,7 @@ function configureFiltersForCurrentTab() {
     const current = status.value
     status.innerHTML = currentOrdersTab === 'stock'
       ? '<option value="">All Statuses</option><option value="pending">Pending</option><option value="received">Received</option><option value="cancelled">Cancelled</option>'
-      : '<option value="">All Statuses</option><option value="inquiry">Inquiry</option><option value="processing">Processing</option><option value="executed">Executed</option><option value="completed">Completed</option>'
+      : '<option value="">All Statuses</option><option value="active">Active</option><option value="approved">Approved</option><option value="processing">Processing</option><option value="direct_order">Direct Order</option><option value="cancelled">Cancelled</option><option value="completed">Completed</option>'
     if ([...status.options].some(opt => opt.value === current)) status.value = current
   }
   if (sort && currentOrdersTab === 'stock' && sort.value.startsWith('total-')) return
@@ -200,6 +200,7 @@ function renderOrders() {
 
   let filtered = allOrders.filter(o => {
     const displayDate = orderDisplayDate(o) || ''
+    if (orderStatus(o) === 'quotation') return false
     if (profileCustomerFilter && o.cust_id !== profileCustomerFilter) return false
     if (status && orderStatus(o) !== status) return false
     if (month && !String(displayDate).startsWith(month)) return false

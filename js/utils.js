@@ -150,12 +150,11 @@ function setPreferredUnit(unit) {
 // so they never break the main operation.
 async function logActivity(actionType, entityType, entityId, entityLabel, changes = null) {
   try {
-    const { data: { session } } = await db.auth.getSession()
-    const user = session?.user
-    const profileName = user?.user_metadata?.full_name || user?.email || null
+    const profile = AUTH?.currentProfile?.() || null
+    const profileName = profile?.full_name || profile?.username || null
 
     let payload = {
-      user_id:      user?.id || null,
+      user_id:      profile?.id || null,
       user_name:    profileName,
       action_type:  actionType,
       entity_type:  entityType,

@@ -23,7 +23,7 @@ function ticketDetailTodayISO() {
 }
 
 function ticketDetailProfileName(profile) {
-  return profile?.full_name || profile?.email || ''
+  return profile?.full_name || profile?.username || ''
 }
 
 function ticketDetailEmployeeName(id) {
@@ -44,16 +44,14 @@ function ticketDetailDisplayUid(ticket) {
 
 function ticketDetailStatusLabel(status) {
   return {
-    open: 'Open',
-    followup: 'Followup',
-    order_confirmed: 'Order Confirmed',
-    converted: 'Converted',
+    active: 'Active',
+    confirmed: 'Quotation',
     cancelled: 'Cancelled',
   }[status] || status || 'Open'
 }
 
 function ticketDetailBadge(status) {
-  return `<span class="badge badge-${ticketDetailEsc(status || 'open')}">${ticketDetailEsc(ticketDetailStatusLabel(status))}</span>`
+  return `<span class="badge badge-${ticketDetailEsc(status || 'active')}">${ticketDetailEsc(ticketDetailStatusLabel(status))}</span>`
 }
 
 function sortedTicketDetailHistory(ticket, newestFirst = true) {
@@ -77,9 +75,9 @@ function ticketDetailAgeDays(ticket) {
 }
 
 function ticketDetailNextAction(ticket) {
-  if (ticket?.status === 'converted') return 'Order created'
   if (ticket?.status === 'cancelled') return 'Closed as cancelled'
-  if (ticket?.status === 'order_confirmed') return 'Create order'
+  if (ticket?.status === 'confirmed' && ticket?.converted_order_id) return 'Quotation generated'
+  if (ticket?.status === 'confirmed') return 'Generate quotation'
   const due = ticketDetailFollowupDate(ticket)
   return due ? `Follow up on ${due}` : 'Schedule follow-up'
 }
@@ -103,7 +101,7 @@ async function initTicketDetailPage() {
 }
 
 async function loadTicketDetailEmployees() {
-  const { data, error } = await db.from('profiles').select('id, full_name, email, role').order('full_name')
+  const { data, error } = await db.from('profiles').select('id, full_name, username, role').order('full_name')
   if (error) {
     console.warn('ticket detail employee load error:', error.message)
     ticketDetailEmployees = []
@@ -152,15 +150,17 @@ function renderTicketDetail() {
 }
 
 function renderTicketDetailActions(ticket) {
-  const canConvert = ['admin', 'sales'].includes(ticketDetailProfile?.role)
-  const isActive = ['open', 'followup', 'order_confirmed'].includes(ticket.status)
+  const canConvert = true
+  const isActive = ticket.status === 'active'
   if (isActive) {
     return `<button class="btn btn-secondary btn-sm" onclick="openFollowupModal()"><i class="fa-solid fa-reply"></i> Follow-up</button>
-      ${canConvert ? `<button class="btn btn-primary btn-sm" onclick="convertTicketToOrder()"><i class="fa-solid fa-arrow-right"></i> Create Order</button>` : ''}
+      ${canConvert ? `<button class="btn btn-primary btn-sm" onclick="convertTicketToOrder()"><i class="fa-solid fa-file-invoice"></i> Generate Quotation</button>` : ''}
       <button class="btn btn-ghost btn-sm" style="color:#ef4444" onclick="cancelTicket()"><i class="fa-solid fa-ban"></i> Cancel</button>`
   }
-  if (ticket.converted_order_id) {
-    return `<button class="btn btn-secondary btn-sm" onclick="window.location.href='order-detail.html?id=${ticketDetailEsc(ticket.converted_order_id)}'"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open Order</button>`
+  if (ticket.status === 'confirmed' && ticket.converted_order_id) {
+    return `<button class="btn btn-secondary btn-sm" onclick="window.location.href='order-detail.html?id=${ticketDetailEsc(ticket.converted_order_id)}'"><i class="fa-solid fa-file-invoice"></i> Open Quotation</button>
+      ${canConvert ? `<button class="btn btn-primary btn-sm" onclick="confirmQuotationAsOrder()"><i class="fa-solid fa-check"></i> Customer Confirmed</button>` : ''}
+      <button class="btn btn-ghost btn-sm" style="color:#ef4444" onclick="cancelTicket()"><i class="fa-solid fa-ban"></i> Cancel</button>`
   }
   return ''
 }
@@ -234,8 +234,8 @@ function openFollowupModal() {
     <div class="form-group">
       <label>Status</label>
       <select id="fu-status">
-        <option value="followup">Followup</option>
-        <option value="order_confirmed">Order Confirmed</option>
+        <option value="active">Active</option>
+        <option value="confirmed">Confirmed</option>
         <option value="cancelled">Cancelled</option>
       </select>
     </div>
@@ -262,7 +262,7 @@ async function saveFollowup() {
     showAlert('fu-alert', 'Remarks are required')
     return
   }
-  const status = ticketDetailVal('fu-status') || 'followup'
+  const status = ticketDetailVal('fu-status') || 'active'
   const followUpDate = ticketDetailVal('fu-date') || ticketDetailTodayISO()
   const btn = document.getElementById('fu-save-btn')
   if (btn) {
@@ -305,6 +305,25 @@ async function saveFollowup() {
 function convertTicketToOrder() {
   if (!currentTicket) return
   window.location.href = `create.html?tab=order&ticket=${encodeURIComponent(currentTicket.id)}`
+}
+
+async function confirmQuotationAsOrder() {
+  if (!currentTicket?.converted_order_id) return
+  if (!confirm('Move this confirmed quotation into active orders?')) return
+  const updates = {
+    status: 'active',
+    quote_confirmed_at: new Date().toISOString(),
+    quote_confirmed_by: ticketDetailProfile?.id || null,
+    approval_status: 'not_requested',
+  }
+  const { error } = await db.from('orders').update(updates).eq('id', currentTicket.converted_order_id)
+  if (error) {
+    toast(error.message, 'error')
+    return
+  }
+  await logActivity('status_change', 'order', currentTicket.converted_order_id, currentTicket.ticket_uid || currentTicket.id, { status: { old: 'quotation', new: 'active' } })
+  toast('Quotation moved to active orders')
+  window.location.href = `order-detail.html?id=${encodeURIComponent(currentTicket.converted_order_id)}`
 }
 
 async function cancelTicket() {

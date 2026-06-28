@@ -8,6 +8,8 @@ let ticketEmployees = []
 let ticketCustomers = []
 let allTickets = []
 let ticketsProfile = null
+let ticketsEmbedMode = false
+let ticketsCreateOnly = false
 
 function ticketEsc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -34,7 +36,7 @@ function todayISODate() {
 }
 
 function profileName(profile) {
-  return profile?.full_name || profile?.email || ''
+  return profile?.full_name || profile?.username || ''
 }
 
 function employeeName(id) {
@@ -45,10 +47,8 @@ function employeeName(id) {
 
 function ticketStatusLabel(status) {
   return {
-    open: 'Open',
-    followup: 'Followup',
-    order_confirmed: 'Order Confirmed',
-    converted: 'Converted',
+    active: 'Active',
+    confirmed: 'Quotation',
     cancelled: 'Cancelled',
   }[status] || status
 }
@@ -82,9 +82,9 @@ function ticketAgeDays(ticket) {
 }
 
 function ticketNextAction(ticket) {
-  if (ticket.status === 'converted') return 'Order created'
   if (ticket.status === 'cancelled') return 'Closed as cancelled'
-  if (ticket.status === 'order_confirmed') return 'Create order'
+  if (ticket.status === 'confirmed' && ticket.converted_order_id) return 'Quotation generated'
+  if (ticket.status === 'confirmed') return 'Generate quotation'
   const due = ticketFollowupDate(ticket)
   return due ? `Follow up on ${due}` : 'Schedule follow-up'
 }
@@ -93,8 +93,9 @@ async function initTickets(profile) {
   ticketsProfile = profile
   renderTicketCustomerForm()
   resetTicketForm()
+  configureTicketPageMode()
   await Promise.all([loadTicketEmployees(), loadTicketCustomers()])
-  await loadTickets()
+  if (!ticketsCreateOnly) await loadTickets()
 }
 
 async function loadTicketCustomers() {
@@ -109,15 +110,68 @@ async function loadTicketCustomers() {
 }
 
 async function initTicketsPage() {
-  const profile = await initSidebar()
+  ticketsEmbedMode = new URLSearchParams(window.location.search).get('embed') === '1'
+  ticketsCreateOnly = ticketsEmbedMode || new URLSearchParams(window.location.search).get('mode') === 'create'
+  let profile
+  if (ticketsEmbedMode) {
+    const session = await AUTH.requireAuth()
+    if (!session) return
+    profile = await AUTH.profile(session.user.id)
+    document.getElementById('sidebar')?.remove()
+    const app = document.querySelector('.app')
+    if (app) {
+      app.style.display = 'block'
+      app.style.height = 'auto'
+      app.style.overflow = 'visible'
+    }
+    document.documentElement.style.overflow = 'visible'
+    document.body.style.overflow = 'visible'
+    const main = document.querySelector('.main')
+    if (main) {
+      main.style.height = 'auto'
+      main.style.overflow = 'visible'
+      main.style.padding = '0'
+    }
+  } else {
+    profile = await initSidebar()
+  }
   if (!profile) return
   await initTickets(profile)
   hide('loading')
   show('content')
+  sendTicketsHeight()
+}
+
+function configureTicketPageMode() {
+  const createCard = document.getElementById('ticket-create-card')
+  const queueCard = document.getElementById('ticket-queue-card')
+  if (ticketsCreateOnly) {
+    if (queueCard) queueCard.style.display = 'none'
+    if (createCard) createCard.style.display = ''
+    const title = document.querySelector('.workspace-hero h1')
+    const subtitle = document.querySelector('.workspace-hero p')
+    if (title) title.textContent = 'Create Ticket'
+    if (subtitle) subtitle.textContent = 'Capture customer requirements before the order is confirmed.'
+  } else {
+    if (createCard) createCard.style.display = 'none'
+    if (queueCard) queueCard.style.display = ''
+  }
+}
+
+function sendTicketsHeight() {
+  if (!ticketsEmbedMode) return
+  requestAnimationFrame(() => {
+    const height = Math.max(
+      document.documentElement.scrollHeight,
+      document.body.scrollHeight,
+      document.getElementById('content')?.scrollHeight || 0
+    )
+    window.parent?.postMessage({ type: 'tickets-height', height }, '*')
+  })
 }
 
 async function loadTicketEmployees() {
-  const { data, error } = await db.from('profiles').select('id, full_name, email, role').order('full_name')
+  const { data, error } = await db.from('profiles').select('id, full_name, username, role').order('full_name')
   if (error) {
     console.warn('ticket employee load error:', error.message)
     ticketEmployees = []
@@ -135,7 +189,7 @@ function renderTicketEmployeeOptions() {
   if (!sel) return
   const current = sel.value || ticketsProfile?.id || ''
   sel.innerHTML = '<option value="">Unassigned</option>' + ticketEmployees
-    .filter(p => ['admin', 'sales', 'executer'].includes(p.role))
+    .filter(p => ['admin', 'management', 'sales', 'executer'].includes(p.role))
     .map(p => `<option value="${p.id}">${ticketEsc(profileName(p))}${p.role ? ` (${ticketEsc(p.role)})` : ''}</option>`)
     .join('')
   if ([...sel.options].some(o => o.value === current)) sel.value = current
@@ -145,6 +199,14 @@ function renderTicketCustomerForm() {
   const wrap = document.getElementById('ticket-customer-fields')
   if (!wrap) return
   wrap.innerHTML = CUSTOMER_SOURCE.formFields('ticket-customer', {}, { nameLabel: 'Customer Name' })
+}
+
+function configureTicketProfileSaveAccess() {
+  const wrap = document.getElementById('ticket-save-profile-wrap')
+  const checkbox = document.getElementById('ticket-save-profile')
+  const canSaveProfile = ticketsProfile?.role === 'admin'
+  if (wrap) wrap.style.display = canSaveProfile ? 'flex' : 'none'
+  if (checkbox) checkbox.checked = canSaveProfile
 }
 
 function renderTicketCustomerOptions() {
@@ -161,6 +223,7 @@ function selectTicketCustomerProfile(customerId) {
   const customer = ticketCustomers.find(c => c.id === customerId)
   if (!customer) {
     document.getElementById('ticket-save-profile-wrap')?.classList.remove('d-none')
+    configureTicketProfileSaveAccess()
     return
   }
   CUSTOMER_SOURCE.fillForm('ticket-customer', customer)
@@ -175,18 +238,6 @@ async function saveTicket() {
   const customerPayload = CUSTOMER_SOURCE.readForm('ticket-customer', { createdBy: ticketsProfile?.id })
   const customerName = (selectedCustomer?.name || customerPayload.name || '').trim()
   const inquiryFor = ticketVal('ticket-inquiry-for').trim()
-  if (!customerName) {
-    showAlert('ticket-alert', 'Customer name is required')
-    return
-  }
-  if (!inquiryFor) {
-    showAlert('ticket-alert', 'Inquiry for is required')
-    return
-  }
-  if (!notes) {
-    showAlert('ticket-alert', 'Remarks are required')
-    return
-  }
 
   const btn = document.getElementById('save-ticket-btn')
   if (btn) {
@@ -197,7 +248,7 @@ async function saveTicket() {
   try {
     let custId = selectedCustomer?.id || null
     let customerForTicket = selectedCustomer || null
-    const shouldSaveProfile = !custId && document.getElementById('ticket-save-profile')?.checked
+  const shouldSaveProfile = ticketsProfile?.role === 'admin' && !custId && customerPayload.name && document.getElementById('ticket-save-profile')?.checked
     if (shouldSaveProfile) {
       const { data: savedCustomer, error: customerErr } = await CUSTOMER_SOURCE.insertCustomer(customerPayload)
       if (customerErr) throw customerErr
@@ -211,14 +262,14 @@ async function saveTicket() {
       cust_id: custId,
       created_by: ticketsProfile?.id || null,
       inquiry_date: todayISODate(),
-      customer_name: customerName,
+      customer_name: customerName || null,
       customer_mobile: customerForTicket?.phone || customerPayload.phone || null,
-      inquiry_for: inquiryFor,
+      inquiry_for: inquiryFor || null,
       location: ticketVal('ticket-location') || null,
       allocated_to: ticketVal('ticket-allocated-to') || null,
-      requirement_notes: notes,
+      requirement_notes: notes || '',
       follow_up_at: ticketVal('ticket-follow-up') || null,
-      status: 'open',
+      status: 'active',
     }
     const { data, error } = await db.from('order_tickets').insert(payload).select('id, ticket_uid').single()
     if (error) {
@@ -264,8 +315,9 @@ function resetTicketForm() {
   const customerProfile = document.getElementById('ticket-customer-profile')
   if (customerProfile) customerProfile.value = ''
   const saveProfile = document.getElementById('ticket-save-profile')
-  if (saveProfile) saveProfile.checked = true
+  if (saveProfile) saveProfile.checked = ticketsProfile?.role === 'admin'
   document.getElementById('ticket-save-profile-wrap')?.classList.remove('d-none')
+  configureTicketProfileSaveAccess()
   const allocated = document.getElementById('ticket-allocated-to')
   if (allocated) allocated.value = ticketsProfile?.id || ''
 }
@@ -296,7 +348,6 @@ function renderTickets() {
   const status = ticketVal('ticket-status-filter')
   const rows = allTickets.filter(t => {
     if (!status) return true
-    if (status === 'active') return ['open', 'followup', 'order_confirmed'].includes(t.status)
     return t.status === status
   })
   text('ticket-count', `${rows.length} of ${allTickets.length} ticket${allTickets.length === 1 ? '' : 's'}`)
@@ -304,21 +355,24 @@ function renderTickets() {
   if (!body) return
   if (!rows.length) {
     body.innerHTML = '<tr><td colspan="10" class="empty-state">No tickets found.</td></tr>'
+    sendTicketsHeight()
     return
   }
   body.innerHTML = rows.map(t => renderTicketRow(t)).join('')
+  sendTicketsHeight()
 }
 
 function renderTicketRow(t) {
   const customer = ticketCustomerName(t)
-  const canConvert = ['admin', 'sales'].includes(ticketsProfile?.role)
-  const isActive = ['open', 'followup', 'order_confirmed'].includes(t.status)
+  const canConvert = true
+  const isActive = t.status === 'active'
   const actions = isActive
     ? `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); openFollowupModal('${t.id}')"><i class="fa-solid fa-reply"></i> Follow-up</button>
-       ${canConvert ? `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); convertTicketToOrder('${t.id}')"><i class="fa-solid fa-arrow-right"></i> Create Order</button>` : ''}
+       ${canConvert ? `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); convertTicketToOrder('${t.id}')"><i class="fa-solid fa-file-invoice"></i> Generate Quotation</button>` : ''}
        <button class="btn btn-ghost btn-sm" style="color:#ef4444" onclick="event.stopPropagation(); cancelTicket('${t.id}')"><i class="fa-solid fa-ban"></i></button>`
-    : (t.converted_order_id
-      ? `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); window.location.href='order-detail.html?id=${t.converted_order_id}'"><i class="fa-solid fa-arrow-up-right-from-square"></i></button>`
+    : (t.status === 'confirmed' && t.converted_order_id
+      ? `<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); openOrderDetailFromTicket('${t.converted_order_id}')"><i class="fa-solid fa-file-invoice"></i> Quotation</button>
+         <button class="btn btn-ghost btn-sm" style="color:#ef4444" onclick="event.stopPropagation(); cancelTicket('${t.id}')"><i class="fa-solid fa-ban"></i></button>`
       : '')
   const history = sortedTicketHistory(t, true)
   const latest = history[0]
@@ -351,7 +405,16 @@ function renderTicketRow(t) {
 
 function openTicketDetail(ticketId) {
   if (!ticketId) return
-  window.location.href = `ticket-detail.html?id=${encodeURIComponent(ticketId)}`
+  const href = `ticket-detail.html?id=${encodeURIComponent(ticketId)}`
+  if (ticketsEmbedMode) window.top.location.href = href
+  else window.location.href = href
+}
+
+function openOrderDetailFromTicket(orderId) {
+  if (!orderId) return
+  const href = `order-detail.html?id=${encodeURIComponent(orderId)}`
+  if (ticketsEmbedMode) window.top.location.href = href
+  else window.location.href = href
 }
 
 function openFollowupModal(ticketId) {
@@ -362,8 +425,8 @@ function openFollowupModal(ticketId) {
     <div class="form-group">
       <label>Status</label>
       <select id="fu-status">
-        <option value="followup">Followup</option>
-        <option value="order_confirmed">Order Confirmed</option>
+        <option value="active">Active</option>
+        <option value="confirmed">Confirmed</option>
         <option value="cancelled">Cancelled</option>
       </select>
     </div>
@@ -372,7 +435,7 @@ function openFollowupModal(ticketId) {
       <input id="fu-date" type="date" value="${todayISODate()}">
     </div>
     <div class="form-group">
-      <label>Remarks *</label>
+      <label>Remarks</label>
       <textarea id="fu-remarks" rows="4" placeholder="What happened in this follow-up?"></textarea>
     </div>
     <div class="modal-footer" style="padding:0;margin-top:1rem;">
@@ -385,11 +448,7 @@ function openFollowupModal(ticketId) {
 async function saveFollowup(ticketId) {
   hideAlert('fu-alert')
   const remarks = ticketVal('fu-remarks').trim()
-  if (!remarks) {
-    showAlert('fu-alert', 'Remarks are required')
-    return
-  }
-  const status = ticketVal('fu-status') || 'followup'
+  const status = ticketVal('fu-status') || 'active'
   const followUpDate = ticketVal('fu-date') || todayISODate()
   const btn = document.getElementById('fu-save-btn')
   if (btn) {
@@ -400,14 +459,14 @@ async function saveFollowup(ticketId) {
     const { error: historyErr } = await db.from('order_ticket_followups').insert({
       ticket_id: ticketId,
       status,
-      remarks,
+      remarks: remarks || '',
       remark_by: ticketsProfile?.id || null,
       follow_up_date: followUpDate,
     })
     if (historyErr) throw historyErr
     const updates = {
       status,
-      requirement_notes: remarks,
+      requirement_notes: remarks || '',
       follow_up_at: followUpDate,
       updated_at: new Date().toISOString(),
     }
@@ -430,11 +489,16 @@ async function saveFollowup(ticketId) {
 }
 
 function convertTicketToOrder(ticketId) {
-  const frame = document.getElementById('create-order-frame')
-  if (frame) frame.src = `create-order.html?embed=1&ticket=${encodeURIComponent(ticketId)}`
-  else window.location.href = `create.html?tab=order&ticket=${encodeURIComponent(ticketId)}`
-  if (typeof switchCreateTab === 'function') switchCreateTab('order')
+  if (ticketsEmbedMode) {
+    window.parent?.postMessage({ type: 'open-create-order-ticket', ticketId }, '*')
+    return
+  }
+  window.location.href = `create.html?tab=order&ticket=${encodeURIComponent(ticketId)}`
 }
+
+window.addEventListener('message', e => {
+  if (e.data?.type === 'request-tickets-height') sendTicketsHeight()
+})
 
 async function cancelTicket(ticketId) {
   if (!confirm('Cancel this ticket?')) return

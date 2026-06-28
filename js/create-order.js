@@ -30,38 +30,6 @@ const TRACK_RECIPES = {
   ],
 }
 
-const BLIND_TYPE_TREE = {
-  'Roller Blinds': [
-    'Roller Blinds Without Headrail',
-    'Roller Blinds With Headrail',
-    'Roller Blinds With Plain Cassette',
-    'Roller Blinds With Decorative Cassette',
-  ],
-  'Vertical Blinds': ['Vertical Blinds'],
-  'Roman Blinds': ['Roman Blinds'],
-  'Sheer Dimout Blinds': [
-    'Sheer Dimout Blinds Classic Mechanism with Plain Cassette',
-    'Sheer Dimout Blinds Classic Mechanism with Decorative Cassette',
-    'Sheer Dimout Blinds Premium Mechanism with Plain Cassette',
-    'Sheer Dimout Blinds Premium Mechanism with Decorative Cassette',
-  ],
-  'S Contour Blinds': ['S-Contour Blinds'],
-  'Cellular Blinds': ['Cellular Blinds'],
-  'Wooden Venetian Blinds': ['Wooden Venetian Blinds'],
-  'Aluminium Venetian Blinds': ['Aluminium Venetian Blinds'],
-}
-
-const BLIND_FABRIC_MAP = {
-  'Roller Blinds':         ['Roller Blind Fabrics'],
-  'Vertical Blinds':       ['Vertical Blind Fabrics', 'Vertical Fabrics'],
-  'Roman Blinds':          ['Roller Blind Fabrics'],
-  'Sheer Dimout Blinds':   ['Sheer Dimout Fabrics'],
-  'S Contour Blinds':      ['S-Contour Fabrics'],
-  'Cellular Blinds':       ['Roller Blind Fabrics'],
-  'Wooden Venetian Blinds': [],
-  'Aluminium Venetian Blinds': [],
-}
-
 const DIM_UNITS = ['cm', 'in', 'ft', 'm']
 const HIDDEN_ORDER_MAIN_TYPES = new Set()
 const HIDDEN_ORDER_CATEGORY_NAMES = new Set()
@@ -83,244 +51,319 @@ function isAdditionalDirectOrderVariant(variant) {
   return ADDITIONAL_DIRECT_ORDER_CATEGORY_NAMES.has(normCatalogName(variant?.category?.name))
 }
 
-function categoryMatchesName(category, name) {
-  const catNorm = normCatalogName(category?.name)
-  const wantNorm = normCatalogName(name)
-  return catNorm && wantNorm && (catNorm === wantNorm || catNorm.includes(wantNorm) || wantNorm.includes(catNorm))
+function availableVariantQty(variant) {
+  return INVENTORY_SOURCE.availableQty(variant)
 }
 
-function fabricCategoryIdsFor(mainType) {
-  const catNames = BLIND_FABRIC_MAP[mainType] || []
-  return allCategories
-    .filter(c => !isHiddenOrderCategory(c) && catNames.some(name => categoryMatchesName(c, name)))
-    .map(c => c.id)
+function variantHasStock(variant) {
+  return availableVariantQty(variant) > 0
+}
+
+function stockedVariantsForProduct(productId) {
+  return allVariants.filter(v => !isHiddenOrderVariant(v) && v.product_id === productId && variantHasStock(v))
+}
+
+function allVariantsForProduct(productId) {
+  return allVariants.filter(v => !isHiddenOrderVariant(v) && v.product_id === productId)
+}
+
+function allVariantsForSelectedProduct(i, productId) {
+  const rootId = selectedRootId(i)
+  return rootId ? variantsForProductAndRoot(productId, rootId) : allVariantsForProduct(productId)
+}
+
+function productHasStock(product) {
+  return stockedVariantsForProduct(product.id).length > 0
+}
+
+function isFabricOrderCategory(category) {
+  const group = String(category?.sub_group || '').trim().toLowerCase()
+  const name = String(category?.name || '').toLowerCase()
+  return group === 'fabric' || name.includes('fabric')
+}
+
+function isFinishedGoodsOrderCategory(category) {
+  const group = String(category?.sub_group || '').trim().toLowerCase()
+  const name = String(category?.name || '').toLowerCase()
+  return group === 'fg' || group === 'finished goods' || name.includes('finished good')
+}
+
+function isRawMaterialOrderCategory(category) {
+  return !isHiddenOrderCategory(category)
+    && !isMasterGeneratedOrderCategory(category)
+    && !isFabricOrderCategory(category)
+    && !isFinishedGoodsOrderCategory(category)
+}
+
+function isMasterGeneratedOrderCategory(category) {
+  const name = normCatalogName(category?.name)
+  const group = normCatalogName(category?.sub_group)
+  if (group === 'master') return true
+  return activeMasterCategoryNames().has(name)
+}
+
+function activeMasterCategoryNames() {
+  return new Set((rrpMasterSyncItems || []).map(item => normCatalogName(item.category_name)).filter(Boolean))
+}
+
+function orderRootIds() {
+  return new Set((rrpMasterSyncItems || []).map(item => item.root_id).filter(Boolean))
+}
+
+function orderRootNodeById(id) {
+  return rrpMasterNodes.find(node => node.id === id && !node.parent_id) || null
+}
+
+function orderMasterRoots() {
+  const ids = orderRootIds()
+  return rrpMasterNodes
+    .filter(node => !node.parent_id && ids.has(node.id))
+    .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || (a.name || '').localeCompare(b.name || ''))
+}
+
+function syncItemsForRoot(rootId) {
+  return (rrpMasterSyncItems || []).filter(item => item.root_id === rootId && item.variant_id)
+}
+
+function variantIdsForRoot(rootId) {
+  return new Set(syncItemsForRoot(rootId).map(item => item.variant_id))
+}
+
+function productsForMasterRoot(rootId) {
+  const ids = variantIdsForRoot(rootId)
+  const productIds = new Set(allVariants.filter(v => ids.has(v.id)).map(v => v.product_id))
+  return allProducts
+    .filter(product => productIds.has(product.id))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+}
+
+function variantsForProductAndRoot(productId, rootId) {
+  const ids = variantIdsForRoot(rootId)
+  return allVariants.filter(v => !isHiddenOrderVariant(v) && v.product_id === productId && ids.has(v.id))
+}
+
+function selectedRootId(i) {
+  return val(`maintype-${i}`)
+}
+
+function selectedRootName(i) {
+  return orderRootNodeById(selectedRootId(i))?.name || ''
+}
+
+function mechanismLabelsForRoot(rootId) {
+  const assignedGroups = rrpMasterMechanismGroups
+    .filter(row => row.master_node_id === rootId)
+    .map(row => row.mechanism_group_id)
+  const assignedSet = new Set(assignedGroups)
+  const options = rrpMechanismOptions
+    .filter(option => option.is_active !== false)
+    .filter(option => !assignedSet.size || assignedSet.has(option.group_id))
+    .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || (a.name || '').localeCompare(b.name || ''))
+  const seen = new Set()
+  const labels = []
+  for (const option of options) {
+    const label = option.name
+    const key = normCatalogName(label)
+    if (!label || seen.has(key)) continue
+    seen.add(key)
+    labels.push(label)
+  }
+  return labels
+}
+
+function isDoubleClothMaster(rootIdOrName) {
+  const name = orderRootNodeById(rootIdOrName)?.name || rootIdOrName || ''
+  return normCatalogName(name).includes('sheer dimout')
+}
+
+function comparableUnit(unit) {
+  const u = String(unit || '').toLowerCase()
+  if (['metre', 'meter', 'meters', 'metres', 'mtr', 'mt'].includes(u)) return 'm'
+  if (['feet', 'foot'].includes(u)) return 'ft'
+  if (['nos', 'no', 'piece', 'pieces'].includes(u)) return 'pcs'
+  return u || 'pcs'
+}
+
+function qtyInVariantUnit(qty, fromUnit, variantUnit) {
+  const from = comparableUnit(fromUnit)
+  const to = comparableUnit(variantUnit)
+  if (from === to) return Number(qty || 0)
+  const lengthUnits = new Set(['m', 'ft', 'cm', 'in'])
+  if (lengthUnits.has(from) && lengthUnits.has(to)) return cvtUnit(Number(qty || 0), from, to)
+  return Number(qty || 0)
+}
+
+function selectedRollAvailable(variant, rollId) {
+  if (!rollId) return availableVariantQty(variant)
+  const roll = (variant?.rolls || []).find(r => r.id === rollId && r.status === 'in_stock')
+  return Number(roll?.remaining_length || 0)
+}
+
+function requireStock(itemLabel, available, needed, unit) {
+  if (!Number.isFinite(needed) || needed <= 0) return
+  if (!Number.isFinite(available) || available < needed) {
+    throw new Error(`${itemLabel}: insufficient stock. Need ${needed.toFixed(3)} ${unit}, available ${Math.max(available || 0, 0).toFixed(3)} ${unit}.`)
+  }
+}
+
+function validateComponentStock(itemLabel, components) {
+  for (const component of components || []) {
+    if (!component.variant_id) {
+      throw new Error(`${itemLabel}: ${component.name || 'component'} is not linked to inventory, so stock cannot be checked.`)
+    }
+    const variant = allVariants.find(v => v.id === component.variant_id)
+    const variantUnit = variant?.unit || component.unit || 'pcs'
+    const needed = qtyInVariantUnit(component.planned_qty || 0, component.unit || variantUnit, variantUnit)
+    const available = variant ? availableVariantQty(variant) : 0
+    requireStock(`${itemLabel}: ${component.name || variant?.name || 'component'}`, available, needed, variantUnit)
+  }
 }
 
 // ── RRP helpers ───────────────────────────────────────────────────────────────
-const RRP_SUBTYPE_COL = {
-  'Roller Blinds Without Headrail':         'rrp_wo_headrail',
-  'Roller Blinds With Headrail':            'rrp_w_headrail',
-  'Roller Blinds With Plain Cassette':      'rrp_w_plain_cassette',
-  'Roller Blinds With Decorative Cassette': 'rrp_w_dec_cassette',
+// RRP tables created on rrp.html are the only sales-order price source.
+function activeRRPBookForOrder() {
+  return rrpRuleBooks.find(book => book.is_default) || rrpRuleBooks[0] || null
 }
 
-function normRRP(s) {
-  return rrpAliasText(s).replace(/[^a-z0-9]/g, '')
+function rrpNodeById(id) {
+  return rrpMasterNodes.find(node => node.id === id) || null
 }
 
-function lookupRRP(variantName, subType, productName) {
-  if (!subType) return null
-  const col = RRP_SUBTYPE_COL[subType]
-  if (!col) return null
+function rrpParentNode(node) {
+  return node?.parent_id ? rrpNodeById(node.parent_id) : null
+}
 
-  function tryName(name) {
-    if (!name) return null
-    const n = normRRP(name)
-    // 1. Exact normalised match
-    let e = allRRP.find(r => normRRP(r.fabric_name) === n)
-    if (e) return e
-    // 2. Substring match in either direction (handles "BAMBERG" inside "VIOLET, SKYLER, ORIBI, ELENA, BAMBERG"
-    //    and "CLASSIC SCREEN 8% BEIGE" containing "CLASSIC SCREEN 8%")
-    e = allRRP.find(r => {
-      const rn = normRRP(r.fabric_name)
-      return rn.length >= 4 && (n.startsWith(rn) || n.includes(rn) || rn.includes(n))
-    })
-    if (e) return e
-    // 3. Comma-split: RRP entry may list several names like "VIOLET, SKYLER, ORIBI, ELENA, BAMBERG"
-    e = allRRP.find(r => {
-      return r.fabric_name.split(',').map(p => normRRP(p)).some(p => p.length >= 3 && (p === n || n.includes(p) || p.includes(n)))
-    })
-    if (e) return e
-    // 4. Strip parentheticals / suffixes from RRP name (e.g. "SERENE (TRANSLUCENT)" → "SERENE",
-    //    "SOLETO N B/O" → "SOLETO N", "WONDER DESIGN - PRINTED B/O" → "WONDER DESIGN")
-    e = allRRP.find(r => {
-      const core = normRRP(r.fabric_name.replace(/\s*[\(\-\/].*$/, '').trim())
-      return core.length >= 4 && (n === core || n.startsWith(core) || n.includes(core) || core.includes(n))
-    })
-    return e || null
+function rrpNodePath(node) {
+  const path = []
+  let cur = node
+  while (cur) {
+    path.unshift(cur)
+    cur = rrpParentNode(cur)
   }
+  return path
+}
 
-  // Try product name first (most reliable for colour variants like "CLASSIC SCREEN 8%")
-  let entry = tryName(productName) || tryName(variantName)
+function normalizedRRPText(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9%]+/g, ' ').replace(/\s+/g, ' ').trim()
+}
 
-  // Last resort: extract a percentage from either name and match by pct within the RRP list
-  if (!entry) {
-    const pctMatch = (productName || variantName || '').match(/(\d+)\s*%/)
-    if (pctMatch) {
-      const pct = pctMatch[1] + '%'
-      entry = allRRP.find(r => r.fabric_name.includes(pct))
+function compactRRPText(value) {
+  return normalizedRRPText(value).replace(/[^a-z0-9%]/g, '')
+}
+
+function bestMasterPathForVariant(variant, productName) {
+  if (!rrpRuleEngineAvailable || !variant) return []
+  const directSync = rrpMasterSyncItems.find(row => row.variant_id === variant.id)
+  const root = directSync?.root_id ? rrpNodeById(directSync.root_id) : null
+  const candidates = root ? descendantsIncluding(root.id) : rrpMasterNodes
+  const searchText = compactRRPText([
+    variant.name,
+    productName,
+    variant.product?.name,
+    directSync?.variant_name,
+  ].filter(Boolean).join(' '))
+
+  let best = null
+  let bestScore = -1
+  for (const node of candidates) {
+    const path = rrpNodePath(node)
+    const included = path.filter(part => !part.exclude_from_pnc_name)
+    const parts = included.map(part => compactRRPText(part.name)).filter(Boolean)
+    if (!parts.length) continue
+    const matches = parts.filter(part => searchText.includes(part) || part.includes(searchText)).length
+    const score = (matches * 100) + parts.join('').length + path.length
+    if (matches && score > bestScore) {
+      best = path
+      bestScore = score
     }
   }
-
-  if (!entry) return null
-  return entry[col] != null ? Number(entry[col]) : null
+  if (best) return best
+  return root ? rrpNodePath(root) : []
 }
 
-const RRP_SHORT_TOKENS = new Set(['ds'])
-
-function rrpAliasText(s) {
-  return String(s || '')
-    .toLowerCase()
-    .replace(/\bds\s+op(?:aq|eq)ue\b/g, ' dsopaque ')
-    .replace(/\bsolar(?:is)?\b/g, ' srs ')
-    .replace(/\bsilver\s+backing\b/g, ' aluminium backing ')
-    .replace(/\bvenice\b/g, ' venice soleto ')
-    .replace(/\bmurano\b/g, ' murano soleto ')
-    .replace(/\bnovel\b/g, ' noble ')
-    .replace(/\bcroma\s*luxe\b/g, ' cromaluxe ')
-    .replace(/\bdash\s*luxe\b/g, ' dashluxe ')
-    .replace(/\bdiamond\s*luxe\b/g, ' diamondluxe ')
-    .replace(/\btri\s*luxe\b/g, ' triluxe ')
-}
-
-function normRRPSearch(s) {
-  return rrpAliasText(s)
-    .replace(/(\d+(?:\.\d+)?)\s*%/g, ' pct$1 ')
-    .replace(/\b\d+(?:\.\d+)?\s*(?:mtr|meter|metre|mt|m)\b/g, ' ')
-    .replace(/\b(?!pct\d+\b)[a-z]{1,5}\s*[-/]?\s*\d{1,3}\b/g, ' ')
-    .replace(/\b\d{2,4}\b/g, ' ')
-    .replace(/\b(?:roller|blind|blinds|fabric|fabrics|sheer|dimout|vertical|roman|contour|cellular|wooden|venetian|aluminium|aluminum|blackout|translucent|screen|opaque|opeque|new|printed|classic|series|mtr|meter|metre|shade|shades)\b/g, ' ')
-    .replace(/[^a-z0-9%]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function rrpTokens(s) {
-  return normRRPSearch(s).split(' ').filter(t => t.length >= 3 || RRP_SHORT_TOKENS.has(t) || /%$/.test(t))
-}
-
-function rrpPercentTokens(s) {
-  return rrpTokens(s).filter(t => /^pct\d+(?:\.\d+)?$/.test(t))
-}
-
-function readRRPPriceMap(entry) {
-  if (!entry) return {}
-  if (entry.price_map && typeof entry.price_map === 'object') return entry.price_map
-  if (typeof entry.price_map === 'string') {
-    try { return JSON.parse(entry.price_map) || {} } catch { return {} }
+function descendantsIncluding(rootId) {
+  const out = []
+  const walk = id => {
+    const node = rrpNodeById(id)
+    if (!node) return
+    out.push(node)
+    rrpMasterNodes.filter(child => child.parent_id === id).forEach(child => walk(child.id))
   }
-  return {}
+  walk(rootId)
+  return out
 }
 
-function rrpPriceForSubtype(entry, subType) {
-  if (!entry || !subType) return null
-  const priceMap = readRRPPriceMap(entry)
-  const direct = priceMap[subType]
-  if (direct != null && direct !== '') return Number(direct)
-
-  const wanted = normRRP(subType)
-  const key = Object.keys(priceMap).find(k => normRRP(k) === wanted)
-    || Object.keys(priceMap).find(k => {
-      const nk = normRRP(k)
-      return nk && (wanted.includes(nk) || nk.includes(wanted))
-    })
-  if (key && priceMap[key] != null && priceMap[key] !== '') return Number(priceMap[key])
-
-  const col = RRP_SUBTYPE_COL[subType]
-  if (col && entry[col] != null) return Number(entry[col])
-
-  const fallback = Object.values(priceMap).find(v => v != null && v !== '')
-  return fallback != null ? Number(fallback) : null
+function ruleForMasterPath(path) {
+  const book = activeRRPBookForOrder()
+  if (!book || !path.length) return null
+  const rules = rrpRules.filter(rule => rule.price_book_id === book.id && rule.is_active !== false)
+  for (let idx = path.length - 1; idx >= 0; idx--) {
+    const node = path[idx]
+    const matches = rules
+      .filter(rule => rule.master_node_id === node.id)
+      .sort((a, b) => Number(a.priority || 0) - Number(b.priority || 0))
+    if (matches.length) return matches[0]
+  }
+  return null
 }
 
-function blindTypeMatches(entryType, mainType, subType) {
-  if (!entryType) return true
-  const e = normRRP(entryType)
-  const m = normRRP(mainType)
-  const s = normRRP(subType)
-  return !m || e === m || m.includes(e) || e.includes(m) || (s && (s.includes(e) || e.includes(s)))
-}
+function mechanismScoreForOrder(row, subType) {
+  const option = row.mechanism_option_id ? rrpMechanismOptions.find(item => item.id === row.mechanism_option_id) : null
+  const haystack = compactRRPText(subType)
+  const labels = [
+    row.mechanism_label,
+    row.price_key,
+    option?.name,
+    option?.source_label,
+    option?.price_key,
+  ].filter(Boolean)
 
-function scoreRRPName(entryName, searchName) {
-  if (!entryName || !searchName) return 0
-  const entryParts = String(entryName).split(',').map(p => p.trim()).filter(Boolean)
-  const candidates = entryParts.length ? entryParts : [entryName]
   let best = 0
-
-  for (const candidate of candidates) {
-    const eCompact = normRRP(candidate)
-    const sCompact = normRRP(searchName)
-    if (!eCompact || !sCompact) continue
-    if (eCompact === sCompact) best = Math.max(best, 100)
-    if (eCompact.length >= 4 && (sCompact.includes(eCompact) || eCompact.includes(sCompact))) best = Math.max(best, 88)
-
-    const eTokens = rrpTokens(candidate)
-    const sTokens = rrpTokens(searchName)
-    if (!eTokens.length || !sTokens.length) continue
-    const ePct = rrpPercentTokens(candidate)
-    const sPct = rrpPercentTokens(searchName)
-    if (ePct.length && sPct.length && !ePct.some(t => sPct.includes(t))) continue
-    const matches = eTokens.filter(t => sTokens.includes(t) || sTokens.some(st => st.includes(t) || t.includes(st)))
-    let score = Math.round((matches.length / eTokens.length) * 80)
-    if (matches.length >= 2) score += Math.min(12, (matches.length - 1) * 8)
-    if (ePct.length && ePct.some(t => sPct.includes(t))) score += 18
-    best = Math.max(best, score)
+  for (const label of labels) {
+    const needle = compactRRPText(label)
+    if (!needle) continue
+    if (haystack === needle) best = Math.max(best, 100)
+    else if (haystack.includes(needle) || needle.includes(haystack)) best = Math.max(best, Math.min(95, needle.length))
+    else {
+      const labelTokens = normalizedRRPText(label).split(' ').filter(t => t.length > 2)
+      const subTokens = normalizedRRPText(subType).split(' ').filter(t => t.length > 2)
+      const matched = labelTokens.filter(t => subTokens.includes(t))
+      if (matched.length) best = Math.max(best, matched.length * 12)
+    }
   }
-
   return best
 }
 
-function lookupRRPAll(variantName, subType, productName, mainType, extraNames = []) {
-  if (!subType) return null
-
-  function tryName(name) {
-    if (!name) return null
-    let best = null
-    let bestScore = 0
-    for (const entry of allRRP) {
-      if (!blindTypeMatches(entry.blind_type, mainType, subType)) continue
-      const price = rrpPriceForSubtype(entry, subType)
-      if (price == null || Number.isNaN(price)) continue
-      const score = scoreRRPName(entry.fabric_name, name)
-      if (score > bestScore) {
-        best = entry
-        bestScore = score
-      }
-    }
-    return bestScore >= 45 ? best : null
-  }
-
-  const candidateNames = [
-    ...extraNames,
-    productName,
-    variantName,
-  ].map(v => String(v || '').trim()).filter(Boolean)
-
-  let entry = null
-  for (const name of candidateNames) {
-    entry = tryName(name)
-    if (entry) break
-  }
-
-  if (!entry) {
-    const joinedNames = candidateNames.join(' ')
-    const pctMatch = joinedNames.match(/(\d+)\s*%/)
-    if (pctMatch) {
-      const pct = pctMatch[1] + '%'
-      entry = allRRP.find(r => blindTypeMatches(r.blind_type, mainType, subType)
-        && r.fabric_name.includes(pct)
-        && rrpPriceForSubtype(r, subType) != null)
+function mechanismPriceForRule(rule, subType) {
+  const rows = rrpMechanismPrices.filter(row => row.rule_id === rule.id && row.is_active !== false)
+  let best = null
+  let bestScore = 0
+  for (const row of rows) {
+    const score = mechanismScoreForOrder(row, subType)
+    if (score > bestScore) {
+      best = row
+      bestScore = score
     }
   }
-
-  if (!entry && !candidateNames.length) {
-    const matches = allRRP.filter(r => blindTypeMatches(r.blind_type, mainType, subType)
-      && rrpPriceForSubtype(r, subType) != null)
-    if (matches.length === 1) entry = matches[0]
-  }
-
-  if (!entry) return null
-  return rrpPriceForSubtype(entry, subType)
+  return bestScore >= 12 ? best : null
 }
 
-function rrpLookupNamesForItem(i) {
-  const pc = selProductCode[i]
-  const v = selFabVar[i]
-  const names = []
-  if (pc?.code) names.push(pc.code)
-  if (pc?.stock_category) names.push(`${pc.stock_category} ${pc.code || ''}`)
-  if (v?.product?.name) names.push(v.product.name)
-  return names
+function lookupRuleRRPRateForItem(i) {
+  if (!rrpRuleEngineAvailable) return null
+  const subType = val(`subtype-${i}`)
+  const variant = selFabVar[i]
+  if (!variant) return null
+  const path = bestMasterPathForVariant(variant, selFabProd[i]?.name)
+  const rule = ruleForMasterPath(path)
+  if (!rule) return null
+  const base = Number(rule.base_rrp || 0)
+  const mech = mechanismPriceForRule(rule, subType)
+  if (mech) {
+    const mechRate = Number(mech.rrp || 0)
+    if (mech.modifier_type === 'add') return base + mechRate
+    return mechRate
+  }
+  return base > 0 ? base : null
 }
 
 function selectedPriceMode(i) {
@@ -330,16 +373,13 @@ function selectedPriceMode(i) {
 }
 
 function resolveRRPRateForItem(i) {
-  const subType = val(`subtype-${i}`)
-  const mainType = val(`maintype-${i}`)
-  const v = selFabVar[i]
-  return lookupRRPAll(v?.name, subType, selFabProd[i]?.name, mainType, rrpLookupNamesForItem(i))
+  return lookupRuleRRPRateForItem(i)
 }
 
 function setRateFromRRP(i, mode, showError = false) {
   const rrpRate = resolveRRPRateForItem(i)
   if (rrpRate === null) {
-    if (showError) toast('No RRP found for this item. Check Product Code, fabric, blind type, or the RRP page.', 'error')
+    if (showError) toast('No RRP found for this item. Check fabric, blind type, mechanism, or the RRP page.', 'error')
     setRRPModeRadio(i, null)
     return false
   }
@@ -379,15 +419,7 @@ function openOrderStockMasterModal() {
   openModal('Create Stock Master', `
     <div id="osm-alert" class="alert alert-error"></div>
     <p class="text-sm text-muted" style="margin-bottom:12px;">Create a category-only master, or add a blank product/variant without stock.</p>
-    <div class="form-row cols-2">
-      <div class="form-group">
-        <label>Item Type <span style="color:#ef4444">*</span></label>
-        <select id="osm-type">
-          <option value="Fabric">Fabric</option>
-          <option value="Parts">Parts / Hardware</option>
-          <option value="FG">Finished Goods</option>
-        </select>
-      </div>
+    <div class="form-row cols-1">
       <div class="form-group">
         <label>Category <span style="color:#ef4444">*</span></label>
         <select id="osm-cat" onchange="document.getElementById('osm-newcat-wrap').style.display = this.value === '__new' ? '' : 'none'">
@@ -429,11 +461,11 @@ function openOrderStockMasterModal() {
 async function saveOrderStockMaster() {
   hideAlert('osm-alert')
   let catId = val('osm-cat')
-  const type = val('osm-type') || 'Fabric'
+  const type = 'Master'
   const newCatName = val('osm-newcat').trim()
   const productName = val('osm-product').trim()
   const variantName = val('osm-variant').trim() || productName
-  const unit = val('osm-unit') || (type === 'Fabric' ? 'm' : 'pcs')
+  const unit = val('osm-unit') || 'pcs'
   const width = Number(val('osm-width') || 0) || null
   const rate = Number(val('osm-rate') || 0) || null
 
@@ -513,8 +545,15 @@ let allRecipes    = []
 let allCustomers  = []
 let allFGItems    = []   // fg_stock rows
 let allDirectItems = []  // fg_stock + inventory variants marked as finished goods
-let allRRP        = []   // rrp_entries - retail prices for all blind families
-let allProductCodes = []
+let rrpRuleBooks = []
+let rrpRules = []
+let rrpMechanismPrices = []
+let rrpMasterNodes = []
+let rrpMasterSyncItems = []
+let rrpMechanismOptions = []
+let rrpMasterMechanismGroups = []
+let rrpMechanismPartLinks = []
+let rrpRuleEngineAvailable = false
 let itemCount     = 0
 let selectedCustomer = null
 let isNewCustomer    = false
@@ -548,6 +587,42 @@ function canSeeCostDetails() {
   return !isSalesRole()
 }
 
+async function loadRRPCreateEngine() {
+  const [
+    booksRes,
+    rulesRes,
+    mechPricesRes,
+    nodesRes,
+    syncRes,
+    optionsRes,
+    assignmentsRes,
+    partLinksRes,
+  ] = await Promise.all([
+    db.from('rrp_price_books').select('*').eq('status', 'active').order('is_default', { ascending: false }).order('effective_from', { ascending: false }),
+    db.from('rrp_rules').select('*').eq('is_active', true).order('priority').order('label'),
+    db.from('rrp_rule_mechanism_prices').select('*').eq('is_active', true).order('sort_order').order('mechanism_label'),
+    db.from('master_nodes').select('id, parent_id, page_id, name, normalized_name, exclude_from_pnc_name, sort_order'),
+    db.from('master_inventory_sync_items').select('root_id, variant_id, category_name, product_name, variant_name, normalized_variant_name, is_active').eq('is_active', true),
+    db.from('mechanism_options').select('id, group_id, name, normalized_name, source_label, price_key, sort_order, is_active').eq('is_active', true),
+    db.from('master_mechanism_groups').select('master_node_id, mechanism_group_id, is_required, sort_order'),
+    db.from('mechanism_part_links').select('id, mechanism_option_id, variant_id, part_name, quantity_rule, quantity_per_unit, wastage_pct, unit, is_required, sort_order, notes'),
+  ])
+  const error = booksRes.error || rulesRes.error || mechPricesRes.error || nodesRes.error || syncRes.error || optionsRes.error || assignmentsRes.error
+  if (error) return { ok: false, error }
+  if (partLinksRes.error) console.warn('Mechanism part links unavailable:', partLinksRes.error.message || partLinksRes.error)
+  return {
+    ok: true,
+    books: booksRes.data || [],
+    rules: rulesRes.data || [],
+    mechanismPrices: mechPricesRes.data || [],
+    masterNodes: nodesRes.data || [],
+    syncItems: syncRes.data || [],
+    mechanismOptions: optionsRes.data || [],
+    masterMechanismGroups: assignmentsRes.data || [],
+    mechanismPartLinks: partLinksRes.error ? [] : (partLinksRes.data || []),
+  }
+}
+
 // Per-item fabric selection state (keyed by item index i)
 const fabProdDropOpen = {}   // {i: bool}
 const fabVarDropOpen  = {}   // {i: bool}
@@ -557,8 +632,6 @@ const selRoll         = {}   // {i: roll_id | null}
 const selTrackType    = {}   // {i: 'Super Track'|'Jumbo Track'|'M Track'|null}
 const selFGItem       = {}   // {i: fg_stock obj | null}
 const fgItemDropOpen  = {}   // {i: bool}
-const selProductCode  = {}   // {i: product_codes row | null}
-const productCodeDropOpen = {} // {i: bool}
 const fgDimRowCounters = {}  // {i: last dimension row number}
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -608,7 +681,7 @@ async function init() {
   if (isSalesRole()) document.getElementById('order-master-btn')?.remove()
   document.getElementById('order-date').value = new Date().toISOString().slice(0, 10)
   setFieldValue('quote-date', quoteInputDate())
-  const [inventoryCatalog, recRes, recipeItemsRes, custRes, rrpRes, codeRes] = await Promise.all([
+  const [inventoryCatalog, recRes, recipeItemsRes, custRes, rrpEngineRes] = await Promise.all([
     INVENTORY_SOURCE.loadCatalog({ includeCosts: !isSalesRole() }),
     db.from('product_recipes')
       .select('id, blind_type')
@@ -617,8 +690,7 @@ async function init() {
     db.from('recipe_items')
       .select('id, recipe_id, variant_id, quantity_per_unit, is_width_dependent, sort_order'),
     CUSTOMER_SOURCE.loadCustomers(),
-    db.from('rrp_entries').select('*').order('blind_type').order('sort_order'),
-    db.from('product_codes').select('id, stock_category, code, is_active').eq('is_active', true).order('stock_category').order('code'),
+    loadRRPCreateEngine(),
   ])
 
   if (inventoryCatalog.errors.categories) console.error('Categories:', inventoryCatalog.errors.categories)
@@ -627,7 +699,6 @@ async function init() {
   if (inventoryCatalog.errors.fgStock)    console.warn('Finished goods:', inventoryCatalog.errors.fgStock.message)
   if (recRes.error)  toast(recRes.error.message, 'error')
   if (recipeItemsRes.error) console.warn('Recipe items:', recipeItemsRes.error.message)
-  if (codeRes.error) console.warn('Product codes:', codeRes.error.message)
 
   allCategories = inventoryCatalog.categories
   allProducts   = inventoryCatalog.products
@@ -635,8 +706,21 @@ async function init() {
   allCustomers  = (custRes.data || []).map(CUSTOMER_SOURCE.normalize)
   allFGItems    = inventoryCatalog.fgStock
   allDirectItems = buildDirectOrderItems()
-  allRRP        = rrpRes.data  || []
-  allProductCodes = codeRes.data || []
+  if (rrpEngineRes?.ok) {
+    rrpRuleBooks = rrpEngineRes.books
+    rrpRules = rrpEngineRes.rules
+    rrpMechanismPrices = rrpEngineRes.mechanismPrices
+    rrpMasterNodes = rrpEngineRes.masterNodes
+    rrpMasterSyncItems = rrpEngineRes.syncItems
+    rrpMechanismOptions = rrpEngineRes.mechanismOptions
+    rrpMasterMechanismGroups = rrpEngineRes.masterMechanismGroups
+    rrpMechanismPartLinks = rrpEngineRes.mechanismPartLinks || []
+    rrpRuleEngineAvailable = true
+  } else {
+    rrpRuleEngineAvailable = false
+    if (rrpEngineRes?.error) console.warn('RRP rule engine unavailable:', rrpEngineRes.error.message || rrpEngineRes.error)
+    rrpMechanismPartLinks = []
+  }
   const variantsById = new Map(allVariants.map(v => [v.id, v]))
   const recipeItems = recipeItemsRes.data || []
   allRecipes    = (recRes.data || []).map(r => ({
@@ -663,9 +747,6 @@ async function init() {
     }
     if (!e.target.closest('[id^="fgi-select-"]') && !e.target.closest('[id^="fgi-drop-"]')) {
       Object.keys(fgItemDropOpen).forEach(i => closeFGIDrop(i))
-    }
-    if (!e.target.closest('[id^="pc-select-"]') && !e.target.closest('[id^="pc-drop-"]')) {
-      Object.keys(productCodeDropOpen).forEach(i => closeProductCodeDrop(i))
     }
     if (!e.target.closest('#cust-select-wrap')) closeCustDropdown()
   })
@@ -722,11 +803,12 @@ function setupEmbedAutoHeight() {
 function renderNewCustomerForm() {
   const wrap = document.getElementById('cust-new-section')
   if (!wrap) return
+  const canSaveProfile = currentProfile?.role === 'admin'
   wrap.innerHTML = `
     ${CUSTOMER_SOURCE.formFields('nc', {}, { nameLabel: 'Full Name' })}
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
       <button class="btn btn-secondary btn-sm" type="button" onclick="toggleNewCustomer(false)">Back to Profiles</button>
-      <button class="btn btn-primary btn-sm" type="button" id="save-customer-profile-btn" onclick="saveFilledCustomerProfile()">
+      <button class="btn btn-primary btn-sm" type="button" id="save-customer-profile-btn" onclick="saveFilledCustomerProfile()" style="${canSaveProfile ? '' : 'display:none;'}">
         <i class="fa-solid fa-address-card"></i> Save Profile
       </button>
     </div>`
@@ -832,10 +914,7 @@ function toggleNewCustomer(newMode) {
 async function saveFilledCustomerProfile() {
   hideAlert('order-alert')
   const payload = CUSTOMER_SOURCE.readForm('nc', { createdBy: currentProfile?.id })
-  if (!payload.name) {
-    showAlert('order-alert', 'Customer name is required before saving profile')
-    return null
-  }
+  if (!payload.name) payload.name = 'Unnamed Customer'
   disable('save-customer-profile-btn')
   const { data, error } = await CUSTOMER_SOURCE.insertCustomer(payload)
   disable('save-customer-profile-btn', false)
@@ -863,7 +942,6 @@ function addItem() {
   fabProdDropOpen[i] = false; fabVarDropOpen[i] = false
   selTrackType[i] = null
   selFGItem[i] = null; fgItemDropOpen[i] = false
-  selProductCode[i] = null; productCodeDropOpen[i] = false
   fgDimRowCounters[i] = 1
   const div = document.createElement('div')
   div.className = 'item-card'
@@ -880,7 +958,6 @@ function removeItem(i) {
   delete fabProdDropOpen[i]; delete fabVarDropOpen[i]
   delete selTrackType[i]
   delete selFGItem[i]; delete fgItemDropOpen[i]
-  delete selProductCode[i]; delete productCodeDropOpen[i]
   delete fgDimRowCounters[i]
   renumberItemCards()
   updateGrand()
@@ -940,12 +1017,11 @@ function buildItemHTML(i) {
   const dimOpts = dimUnitOptions()
 
   const rmCatOpts = allCategories
-    .filter(c => !['fg', 'finished goods'].includes(String(c.sub_group || '').toLowerCase()) && !isHiddenOrderCategory(c))
+    .filter(isRawMaterialOrderCategory)
     .map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')
 
-  const mainTypeOpts = Object.keys(BLIND_TYPE_TREE)
-    .filter(t => !HIDDEN_ORDER_MAIN_TYPES.has(t))
-    .map(t => `<option value="${t}">${esc(t)}</option>`).join('')
+  const mainTypeOpts = orderMasterRoots()
+    .map(root => `<option value="${esc(root.id)}">${esc(root.name)}</option>`).join('')
 
   return `
   <div class="item-card-header">
@@ -957,7 +1033,7 @@ function buildItemHTML(i) {
 
   <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
     <button id="type-fg-${i}" class="type-toggle-btn active" onclick="setItemType(${i},'fg')">
-      <i class="fa-solid fa-blinds"></i> Finished Goods
+      <i class="fa-solid fa-blinds"></i> Product
     </button>
     <button id="type-rm-${i}" class="type-toggle-btn" onclick="setItemType(${i},'rm')">
       <i class="fa-solid fa-boxes-stacked"></i> Raw Material
@@ -965,69 +1041,34 @@ function buildItemHTML(i) {
     <button id="type-track-${i}" class="type-toggle-btn" onclick="setItemType(${i},'track')">
       <i class="fa-solid fa-ruler-horizontal"></i> Track
     </button>
-    <button id="type-resale-${i}" class="type-toggle-btn" onclick="setItemType(${i},'resale')">
-      <i class="fa-solid fa-tag"></i> Direct Order
-    </button>
   </div>
 
-  <div class="form-group" style="margin-bottom:14px;" id="pc-select-${i}">
-    <label>Product Code</label>
-    <div style="position:relative;">
-      <div id="pc-trigger-${i}"
-           style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:#fff;font-size:14px;color:#9ca3af;user-select:none;"
-           onclick="toggleProductCodeDrop(${i})">
-        <span id="pc-placeholder-${i}">Select product code…</span>
-        <i class="fa-solid fa-chevron-down" style="color:#9ca3af;flex-shrink:0;font-size:12px;"></i>
-      </div>
-      <div id="pc-sel-card-${i}"
-           style="display:none;margin-top:6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
-          <div>
-            <div class="fw-600 text-sm" id="pc-sel-code-${i}"></div>
-            <div class="text-xs text-muted" id="pc-sel-category-${i}"></div>
-          </div>
-          <button class="btn btn-ghost btn-sm" onclick="clearProductCode(${i})" style="color:#6b7280;padding:2px 6px;font-size:16px;line-height:1;">×</button>
-        </div>
-      </div>
-      <div id="pc-drop-${i}"
-           style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:180;">
-        <div style="padding:8px 10px;border-bottom:1px solid var(--border);">
-          <input id="pc-search-${i}" placeholder="Search product code or category…"
-                 oninput="renderProductCodeList(${i},this.value)"
-                 autocomplete="off"
-                 style="width:100%;border:none;outline:none;font-size:13px;background:transparent;">
-        </div>
-        <div id="pc-list-${i}" style="max-height:240px;overflow-y:auto;"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Finished Goods section ── -->
+  <!-- Product section -->
   <div id="fg-section-${i}">
     <div class="form-row cols-2" style="margin-bottom:12px;">
       <div class="form-group" style="margin:0;">
-        <label>Blind Type <span style="color:#ef4444">*</span></label>
+        <label>Product Master <span style="color:#ef4444">*</span></label>
         <select id="maintype-${i}" onchange="onMainTypeChange(${i})">
-          <option value="">Select type…</option>
+          <option value="">Select master...</option>
           ${mainTypeOpts}
         </select>
       </div>
       <div class="form-group" style="margin:0;">
-        <label>Sub-Type / Mechanism <span style="color:#ef4444">*</span></label>
+        <label>Mechanism <span style="color:#ef4444">*</span></label>
         <select id="subtype-${i}" onchange="onSubTypeChange(${i})" disabled>
           <option value="">Select…</option>
         </select>
       </div>
     </div>
 
-    <!-- Fabric Product (shown after main type selected) -->
+    <!-- Inventory group (shown after product master selected) -->
     <div id="fab-prod-wrap-${i}" class="form-group" style="margin-bottom:12px;display:none;">
-      <label>Fabric Product <span style="color:#ef4444">*</span></label>
+      <label>Inventory Group <span style="color:#ef4444">*</span></label>
       <div style="position:relative;" id="fab-prod-select-${i}">
         <div id="fab-prod-trigger-${i}"
              style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:#fff;font-size:14px;color:#9ca3af;user-select:none;"
              onclick="toggleFabProdDrop(${i})">
-          <span id="fab-prod-placeholder-${i}">Select fabric product…</span>
+          <span id="fab-prod-placeholder-${i}">Select inventory group...</span>
           <i class="fa-solid fa-chevron-down" style="color:#9ca3af;flex-shrink:0;font-size:12px;"></i>
         </div>
         <div id="fab-prod-sel-card-${i}"
@@ -1043,7 +1084,7 @@ function buildItemHTML(i) {
         <div id="fab-prod-drop-${i}"
              style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:150;">
           <div style="padding:8px 10px;border-bottom:1px solid var(--border);">
-            <input id="fab-prod-search-${i}" placeholder="Search product…"
+            <input id="fab-prod-search-${i}" placeholder="Search inventory group..."
                    oninput="onFabProdSearch(${i},this.value)"
                    autocomplete="off"
                    style="width:100%;border:none;outline:none;font-size:13px;background:transparent;">
@@ -1053,14 +1094,14 @@ function buildItemHTML(i) {
       </div>
     </div>
 
-    <!-- Fabric Variant (shown after product selected) -->
+    <!-- Inventory item (shown after inventory group selected) -->
     <div id="fab-var-wrap-${i}" class="form-group" style="margin-bottom:12px;display:none;">
-      <label>Fabric Variant <span style="color:#ef4444">*</span></label>
+      <label>Inventory Item <span style="color:#ef4444">*</span></label>
       <div style="position:relative;" id="fab-var-select-${i}">
         <div id="fab-var-trigger-${i}"
              style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:#fff;font-size:14px;color:#9ca3af;user-select:none;"
              onclick="toggleFabVarDrop(${i})">
-          <span id="fab-var-placeholder-${i}">Select variant…</span>
+          <span id="fab-var-placeholder-${i}">Select inventory item...</span>
           <i class="fa-solid fa-chevron-down" style="color:#9ca3af;flex-shrink:0;font-size:12px;"></i>
         </div>
         <div id="fab-var-sel-card-${i}"
@@ -1076,7 +1117,7 @@ function buildItemHTML(i) {
         <div id="fab-var-drop-${i}"
              style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:150;">
           <div style="padding:8px 10px;border-bottom:1px solid var(--border);">
-            <input id="fab-var-search-${i}" placeholder="Search variant…"
+            <input id="fab-var-search-${i}" placeholder="Search inventory..."
                    oninput="onFabVarSearch(${i},this.value)"
                    autocomplete="off"
                    style="width:100%;border:none;outline:none;font-size:13px;background:transparent;">
@@ -1409,6 +1450,7 @@ function readFGDimensionRows(i) {
 }
 
 function setItemType(i, type) {
+  if (type === 'resale') type = 'fg'
   const fgSec     = document.getElementById(`fg-section-${i}`)
   const rmSec     = document.getElementById(`rm-section-${i}`)
   const trackSec  = document.getElementById(`track-section-${i}`)
@@ -1421,78 +1463,13 @@ function setItemType(i, type) {
   fgSec.style.display     = type === 'fg'     ? '' : 'none'
   rmSec.style.display     = type === 'rm'     ? '' : 'none'
   trackSec.style.display  = type === 'track'  ? '' : 'none'
-  resaleSec.style.display = type === 'resale' ? '' : 'none'
+  if (resaleSec) resaleSec.style.display = type === 'resale' ? '' : 'none'
 
   fgBtn?.classList.toggle('active',     type === 'fg')
   rmBtn?.classList.toggle('active',     type === 'rm')
   trackBtn?.classList.toggle('active',  type === 'track')
   resaleBtn?.classList.toggle('active', type === 'resale')
-
-  if (type === 'resale') renderFGIList(i, '')
   updateGrand()
-}
-
-// ── Product code picker ──────────────────────────────────────────────────────
-function renderProductCodeList(i, query = '') {
-  const listEl = document.getElementById(`pc-list-${i}`)
-  if (!listEl) return
-  const q = query.toLowerCase().trim()
-  const matches = (q
-    ? allProductCodes.filter(item =>
-        (item.code || '').toLowerCase().includes(q) ||
-        (item.stock_category || '').toLowerCase().includes(q)
-      )
-    : allProductCodes
-  ).slice(0, 120)
-
-  if (!matches.length) {
-    listEl.innerHTML = `<div style="padding:12px 14px;font-size:13px;color:#9ca3af;">No product codes found. Run migration 013_product_codes.sql, then refresh.</div>`
-    return
-  }
-
-  listEl.innerHTML = matches.map(item => `
-    <div onmousedown="selectProductCode(${i},'${item.id}')"
-         style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f3f4f6;font-size:13px;">
-      <div class="fw-600">${esc(item.code)}</div>
-      <div class="text-xs text-muted">${esc(item.stock_category || '')}</div>
-    </div>
-  `).join('')
-}
-
-function toggleProductCodeDrop(i) {
-  if (productCodeDropOpen[i]) closeProductCodeDrop(i); else openProductCodeDrop(i)
-}
-
-function openProductCodeDrop(i) {
-  Object.keys(productCodeDropOpen).forEach(k => { if (k != i) closeProductCodeDrop(k) })
-  const drop = document.getElementById(`pc-drop-${i}`)
-  if (drop) drop.style.display = ''
-  document.getElementById(`pc-search-${i}`)?.focus()
-  productCodeDropOpen[i] = true
-  renderProductCodeList(i, document.getElementById(`pc-search-${i}`)?.value || '')
-}
-
-function closeProductCodeDrop(i) {
-  const drop = document.getElementById(`pc-drop-${i}`)
-  if (drop) drop.style.display = 'none'
-  productCodeDropOpen[i] = false
-}
-
-function selectProductCode(i, id) {
-  const item = allProductCodes.find(x => x.id === id)
-  if (!item) return
-  selProductCode[i] = item
-  closeProductCodeDrop(i)
-  document.getElementById(`pc-trigger-${i}`).style.display = 'none'
-  const card = document.getElementById(`pc-sel-card-${i}`)
-  if (card) card.style.display = ''
-  text(`pc-sel-code-${i}`, item.code)
-  text(`pc-sel-category-${i}`, item.stock_category || 'Product code selected')
-  const mode = selectedPriceMode(i)
-  const rateInput = document.getElementById(`rate-${i}`)
-  if (mode || !rateInput?.value) setRateFromRRP(i, mode || 'rrp', false)
-  else calcItem(i)
-  saveOrderDraft()
 }
 
 async function loadTicketPrefill() {
@@ -1501,7 +1478,7 @@ async function loadTicketPrefill() {
 
   const { data, error } = await db
     .from('order_tickets')
-    .select(`id, ticket_uid, cust_id, status, requirement_notes, customer_name, customer_mobile, inquiry_for, location, customers!cust_id(${CUSTOMER_SOURCE.SELECT})`)
+    .select(`id, ticket_uid, cust_id, status, requirement_notes, customer_name, customer_mobile, inquiry_for, location, follow_up_at, inquiry_date, created_at, allocated_to, converted_order_id, customers!cust_id(${CUSTOMER_SOURCE.SELECT}), order_ticket_followups(id, status, remarks, remark_by, follow_up_date, created_at)`)
     .eq('id', ticketId)
     .single()
 
@@ -1512,8 +1489,12 @@ async function loadTicketPrefill() {
       : error.message)
     return
   }
-  if (!data || !['open', 'followup', 'order_confirmed'].includes(data.status)) {
-    showAlert('order-alert', 'This ticket is not open for conversion.')
+  if (!data || !['active', 'confirmed'].includes(data.status)) {
+    showAlert('order-alert', 'This ticket is not open for quotation generation.')
+    return
+  }
+  if (data.converted_order_id) {
+    window.location.href = `ticket-detail.html?id=${encodeURIComponent(data.id)}`
     return
   }
 
@@ -1526,118 +1507,92 @@ async function loadTicketPrefill() {
     setFieldValue('nc-name', data.customer_name || '')
     setFieldValue('nc-phone', data.customer_mobile || '')
   }
-  const ticketNotes = [
-    displayTicketUid(data),
-    data.inquiry_for ? `Inquiry: ${data.inquiry_for}` : '',
-    data.location ? `Location: ${data.location}` : '',
-    data.requirement_notes,
-  ].filter(Boolean).join(' - ')
-  setFieldValue('order-notes', ticketNotes)
+  renderTicketConversionPanel(data, customer)
 
   const heading = document.querySelector('.page-header h1')
-  if (heading) heading.textContent = `Convert ${displayTicketUid(data)}`
+  if (heading) heading.textContent = `Generate Quotation ${displayTicketUid(data)}`
   const sub = document.querySelector('.page-header p')
-  if (sub) sub.textContent = 'Add order items and submit when the ticket is confirmed.'
+  if (sub) sub.textContent = 'Use the ticket context while manually filling quotation details. Customer profile details are copied only as profile data.'
 }
 
-function clearProductCode(i) {
-  selProductCode[i] = null
-  const trigger = document.getElementById(`pc-trigger-${i}`)
-  if (trigger) trigger.style.display = ''
-  const card = document.getElementById(`pc-sel-card-${i}`)
-  if (card) card.style.display = 'none'
-  closeProductCodeDrop(i)
-  calcItem(i)
-  saveOrderDraft()
-}
-
-// ── FG flow: main type → sub-type → fabric product → variant → roll ──────────
-function onMainTypeChange(i) {
-  const mainType = val(`maintype-${i}`)
-  const subSel = document.getElementById(`subtype-${i}`)
-  subSel.innerHTML = '<option value="">Select…</option>'
-  subSel.disabled = true
-
-  // Reset fabric selections
-  clearFabProd(i)
-  document.getElementById(`fab-prod-wrap-${i}`).style.display = 'none'
-
-  if (!mainType) { calcItem(i); return }
-
-  const subTypes = BLIND_TYPE_TREE[mainType] || []
-  subSel.innerHTML = '<option value="">Select…</option>' +
-    subTypes.map(s => `<option value="${s}">${esc(s)}</option>`).join('')
-  subSel.disabled = false
-
-  // Show fabric product section if this type uses fabric
-  const catNames = BLIND_FABRIC_MAP[mainType] || []
-  if (catNames.length) {
-    document.getElementById(`fab-prod-wrap-${i}`).style.display = ''
-    populateFabProdList(i, mainType)
-  } else {
-    document.getElementById(`fab-prod-wrap-${i}`).style.display = 'none'
-    document.getElementById(`fab-var-wrap-${i}`).style.display = 'none'
-    document.getElementById(`roll-pick-wrap-${i}`).style.display = 'none'
-    const rateSection = document.getElementById(`rate-section-${i}`)
-    if (rateSection) rateSection.style.display = val(`subtype-${i}`) ? '' : 'none'
+function renderTicketConversionPanel(ticket, customer) {
+  const content = document.getElementById('content')
+  if (!content) return
+  content.style.maxWidth = '1280px'
+  let layout = document.getElementById('ticket-conversion-layout')
+  let panel = document.getElementById('ticket-conversion-panel')
+  let pane = document.getElementById('order-form-pane')
+  if (!layout) {
+    layout = document.createElement('div')
+    layout.id = 'ticket-conversion-layout'
+    layout.className = 'ticket-conversion-layout'
+    panel = document.createElement('aside')
+    panel.id = 'ticket-conversion-panel'
+    panel.className = 'ticket-conversion-panel'
+    pane = document.createElement('div')
+    pane.id = 'order-form-pane'
+    pane.className = 'order-form-pane'
+    while (content.firstChild) pane.appendChild(content.firstChild)
+    layout.appendChild(panel)
+    layout.appendChild(pane)
+    content.appendChild(layout)
   }
-  calcItem(i)
+  const profile = customer || {}
+  const history = sortedConversionTicketHistory(ticket)
+  const latestFollowup = history[0]
+  const timeline = history.length ? history.map(h => `
+    <div class="ticket-conversion-timeline-row">
+      <div>
+        <strong>${esc(conversionStatusLabel(h.status))}</strong>
+        <span>${esc(h.follow_up_date || String(h.created_at || '').slice(0, 10) || '-')}</span>
+      </div>
+      <p>${esc(h.remarks || '-')}</p>
+    </div>
+  `).join('') : '<div class="ticket-context-empty">No follow-ups logged yet.</div>'
+  panel.innerHTML = `
+    <div class="ticket-context-sticky">
+      <div class="ticket-context-top">
+        <div>
+          <div class="ticket-context-kicker">Ticket Context</div>
+          <h2>${esc(displayTicketUid(ticket))}</h2>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="window.top.exitTicketConversionMode?.('tickets')">
+          <i class="fa-solid fa-arrow-left"></i> Tickets
+        </button>
+      </div>
+      <div class="ticket-context-grid">
+        <div class="ticket-context-row"><span>Customer</span><strong>${esc(profile.name || ticket.customer_name || '-')}</strong></div>
+        <div class="ticket-context-row"><span>Phone</span><strong>${esc(profile.phone || ticket.customer_mobile || '-')}</strong></div>
+        <div class="ticket-context-row"><span>Inquiry</span><strong>${esc(ticket.inquiry_for || '-')}</strong></div>
+        <div class="ticket-context-row"><span>Location</span><strong>${esc(ticket.location || '-')}</strong></div>
+        <div class="ticket-context-row"><span>Inquiry Date</span><strong>${esc(ticket.inquiry_date || String(ticket.created_at || '').slice(0, 10) || '-')}</strong></div>
+        <div class="ticket-context-row"><span>Next Follow-up</span><strong>${esc(latestFollowup?.follow_up_date || (ticket.follow_up_at ? String(ticket.follow_up_at).slice(0, 10) : '-') || '-')}</strong></div>
+      </div>
+      <div class="ticket-context-row ticket-context-wide"><span>Address</span><strong>${esc([profile.address, profile.city, profile.state, profile.pincode].filter(Boolean).join(', ') || '-')}</strong></div>
+      <div class="ticket-context-notes"><span>Requirement</span>${esc(ticket.requirement_notes || 'No remarks recorded.')}</div>
+      <div class="ticket-context-history">
+        <div class="ticket-context-history-head">Follow-up History</div>
+        ${timeline}
+      </div>
+    </div>
+  `
 }
 
-function onSubTypeChange(i) {
-  const mainType = val(`maintype-${i}`)
-  const catNames = BLIND_FABRIC_MAP[mainType] || []
-  const rateSection = document.getElementById(`rate-section-${i}`)
-  if (rateSection && !catNames.length) {
-    rateSection.style.display = val(`subtype-${i}`) ? '' : 'none'
-  }
-  const mode = selectedPriceMode(i) || 'rrp'
-  setRateFromRRP(i, mode, false)
-  calcItem(i)
+function sortedConversionTicketHistory(ticket) {
+  return [...(ticket?.order_ticket_followups || [])].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
 }
 
-// Build the product list for the dropdown
-function populateFabProdList(i, mainType) {
-  const catIds = fabricCategoryIdsFor(mainType)
-  const products = allProducts.filter(p => catIds.includes(p.category_id))
-  renderFabProdList(i, products, '')
-}
-
-function renderFabProdList(i, products, query) {
-  const lower = query.toLowerCase()
-  const filtered = query
-    ? products.filter(p => {
-        if (p.name.toLowerCase().includes(lower)) return true
-        return allVariants.some(v => !isHiddenOrderVariant(v) && v.product_id === p.id && v.name.toLowerCase().includes(lower))
-      })
-    : products
-  const listEl = document.getElementById(`fab-prod-list-${i}`)
-  if (!listEl) return
-  if (!filtered.length) {
-    listEl.innerHTML = `<div style="padding:12px 14px;font-size:13px;color:#9ca3af;">No products found</div>`
-    return
-  }
-  listEl.innerHTML = filtered.map(p => {
-    const vars = allVariants.filter(v => !isHiddenOrderVariant(v) && v.product_id === p.id)
-    const inStock = vars.filter(v => (v.rolls||[]).some(r => r.status === 'in_stock' && r.remaining_length > 0))
-    return `<div onmousedown="selectFabProdById(${i},'${p.id}')"
-                 style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f3f4f6;font-size:13px;">
-      <div class="fw-600">${esc(p.name)}</div>
-      <div class="text-xs text-muted">${vars.length} variant${vars.length!==1?'s':''} · ${inStock.length} with stock</div>
-    </div>`
-  }).join('')
+function conversionStatusLabel(status) {
+  return {
+    active: 'Active',
+    confirmed: 'Confirmed',
+    cancelled: 'Cancelled',
+  }[status] || status || 'Follow-up'
 }
 
 function selectFabProdById(i, prodId) {
   const p = allProducts.find(x => x.id === prodId)
   if (p) selectFabProd(i, p)
-}
-
-function onFabProdSearch(i, q) {
-  const mainType = val(`maintype-${i}`)
-  const catIds = fabricCategoryIdsFor(mainType)
-  const products = allProducts.filter(p => catIds.includes(p.category_id))
-  renderFabProdList(i, products, q)
 }
 
 function toggleFabProdDrop(i) {
@@ -1658,25 +1613,6 @@ function closeFabProdDrop(i) {
   fabProdDropOpen[i] = false
 }
 
-function selectFabProd(i, prod) {
-  selFabProd[i] = prod
-  closeFabProdDrop(i)
-  // Update trigger display
-  document.getElementById(`fab-prod-trigger-${i}`).style.display = 'none'
-  const card = document.getElementById(`fab-prod-sel-card-${i}`)
-  card.style.display = ''
-  text(`fab-prod-sel-name-${i}`, prod.name)
-  const vars = allVariants.filter(v => !isHiddenOrderVariant(v) && v.product_id === prod.id)
-  const stockCount = vars.filter(v => (v.rolls||[]).some(r => r.status === 'in_stock' && r.remaining_length > 0)).length
-  text(`fab-prod-sel-info-${i}`, `${vars.length} variant${vars.length!==1?'s':''} · ${stockCount} with stock`)
-
-  // Reset and show variant section
-  clearFabVar(i)
-  document.getElementById(`fab-var-wrap-${i}`).style.display = ''
-  populateFabVarList(i, prod.id, '')
-  saveOrderDraft()
-}
-
 function clearFabProd(i) {
   selFabProd[i] = null
   clearFabVar(i)
@@ -1692,11 +1628,6 @@ function clearFabProd(i) {
 }
 
 // ── Fabric Variant dropdown ───────────────────────────────────────────────────
-function populateFabVarList(i, prodId, query) {
-  const vars = allVariants.filter(v => !isHiddenOrderVariant(v) && v.product_id === prodId)
-  renderFabVarList(i, vars, query)
-}
-
 function renderFabVarList(i, vars, query) {
   const lower = query.toLowerCase()
   const filtered = query ? vars.filter(v => v.name.toLowerCase().includes(lower)) : vars
@@ -1727,13 +1658,6 @@ function renderFabVarList(i, vars, query) {
 function selectFabVarById(i, varId) {
   const v = allVariants.find(x => x.id === varId)
   if (v) selectFabVar(i, v)
-}
-
-function onFabVarSearch(i, q) {
-  const prod = selFabProd[i]
-  if (!prod) return
-  const vars = allVariants.filter(v => !isHiddenOrderVariant(v) && v.product_id === prod.id)
-  renderFabVarList(i, vars, q)
 }
 
 function toggleFabVarDrop(i) {
@@ -1856,6 +1780,106 @@ function renderRollPicker(i, variant) {
 }
 
 // ── RM flow ───────────────────────────────────────────────────────────────────
+// Master-based product flow.
+function onMainTypeChange(i) {
+  const rootId = val(`maintype-${i}`)
+  const subSel = document.getElementById(`subtype-${i}`)
+  if (subSel) {
+    subSel.innerHTML = '<option value="">Select mechanism...</option>'
+    subSel.disabled = true
+  }
+
+  clearFabProd(i)
+  const prodWrap = document.getElementById(`fab-prod-wrap-${i}`)
+  if (prodWrap) prodWrap.style.display = 'none'
+
+  if (!rootId) { calcItem(i); return }
+
+  const mechanismLabels = mechanismLabelsForRoot(rootId)
+  if (subSel) {
+    if (mechanismLabels.length) {
+      subSel.innerHTML = '<option value="">Select mechanism...</option>' +
+        mechanismLabels.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('')
+      subSel.disabled = false
+    } else {
+      subSel.innerHTML = '<option value="Standard">Standard</option>'
+      subSel.value = 'Standard'
+      subSel.disabled = true
+    }
+  }
+
+  if (prodWrap) prodWrap.style.display = ''
+  populateFabProdList(i, rootId)
+  calcItem(i)
+}
+
+function onSubTypeChange(i) {
+  const rateSection = document.getElementById(`rate-section-${i}`)
+  if (rateSection) rateSection.style.display = selFabVar[i] ? '' : 'none'
+  setRateFromRRP(i, selectedPriceMode(i) || 'rrp', false)
+  calcItem(i)
+}
+
+function populateFabProdList(i, rootId) {
+  renderFabProdList(i, productsForMasterRoot(rootId), '')
+}
+
+function renderFabProdList(i, products, query) {
+  const lower = String(query || '').toLowerCase()
+  const filtered = lower
+    ? products.filter(p => {
+        if (String(p.name || '').toLowerCase().includes(lower)) return true
+        return allVariantsForSelectedProduct(i, p.id).some(v => String(v.name || '').toLowerCase().includes(lower))
+      })
+    : products
+  const listEl = document.getElementById(`fab-prod-list-${i}`)
+  if (!listEl) return
+  if (!filtered.length) {
+    listEl.innerHTML = `<div style="padding:12px 14px;font-size:13px;color:#9ca3af;">No inventory groups found</div>`
+    return
+  }
+  listEl.innerHTML = filtered.map(p => {
+    const vars = allVariantsForSelectedProduct(i, p.id)
+    const inStock = vars.filter(v => (v.rolls || []).some(r => r.status === 'in_stock' && r.remaining_length > 0))
+    return `<div onmousedown="selectFabProdById(${i},'${p.id}')"
+                 style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f3f4f6;font-size:13px;">
+      <div class="fw-600">${esc(p.name)}</div>
+      <div class="text-xs text-muted">${vars.length} item${vars.length !== 1 ? 's' : ''} · ${inStock.length} with stock</div>
+    </div>`
+  }).join('')
+}
+
+function onFabProdSearch(i, q) {
+  renderFabProdList(i, productsForMasterRoot(selectedRootId(i)), q)
+}
+
+function selectFabProd(i, prod) {
+  selFabProd[i] = prod
+  closeFabProdDrop(i)
+  document.getElementById(`fab-prod-trigger-${i}`).style.display = 'none'
+  const card = document.getElementById(`fab-prod-sel-card-${i}`)
+  card.style.display = ''
+  text(`fab-prod-sel-name-${i}`, prod.name)
+  const vars = allVariantsForSelectedProduct(i, prod.id)
+  const stockCount = vars.filter(v => (v.rolls || []).some(r => r.status === 'in_stock' && r.remaining_length > 0)).length
+  text(`fab-prod-sel-info-${i}`, `${vars.length} item${vars.length !== 1 ? 's' : ''} · ${stockCount} with stock`)
+
+  clearFabVar(i)
+  document.getElementById(`fab-var-wrap-${i}`).style.display = ''
+  populateFabVarList(i, prod.id, '')
+  saveOrderDraft()
+}
+
+function populateFabVarList(i, prodId, query) {
+  renderFabVarList(i, allVariantsForSelectedProduct(i, prodId), query)
+}
+
+function onFabVarSearch(i, q) {
+  const prod = selFabProd[i]
+  if (!prod) return
+  renderFabVarList(i, allVariantsForSelectedProduct(i, prod.id), q)
+}
+
 function onRMCatChange(i) {
   const catId  = val(`rm-cat-${i}`)
   const prodSel = document.getElementById(`rm-prod-${i}`)
@@ -1885,11 +1909,12 @@ function onRMProdChange(i) {
   const rateInput = document.getElementById(`rm-rate-${i}`)
   if (rateInput) rateInput.value = ''
   if (!prodId) { calcRMItem(i); return }
-  const vars = allVariants.filter(v => !isHiddenOrderVariant(v) && v.product_id === prodId)
+  const vars = allVariantsForProduct(prodId)
   varSel.innerHTML = '<option value="">Select…</option>' +
     vars.map(v => {
-      const rate = v.purchase_rate ? ` — ₹${Number(v.purchase_rate).toFixed(2)}/${v.unit}` : ''
-      return `<option value="${v.id}" data-unit="${v.unit}" data-purchase-rate="${v.purchase_rate || 0}" data-name="${esc(v.name)}">${esc(v.name)}${rate}</option>`
+      const stock = availableVariantQty(v)
+      const rate = v.purchase_rate ? ` - Rs ${Number(v.purchase_rate).toFixed(2)}/${v.unit}` : ''
+      return `<option value="${v.id}" data-unit="${v.unit}" data-purchase-rate="${v.purchase_rate || 0}" data-stock="${stock}" data-name="${esc(v.name)}">${esc(v.name)} - ${stock.toFixed(stock % 1 === 0 ? 0 : 2)} ${esc(v.unit || 'pcs')} in stock${rate}</option>`
     }).join('')
   varSel.disabled = false
   calcRMItem(i)
@@ -1922,6 +1947,8 @@ function calcRMItem(i) {
   const qty = parseFloat(document.getElementById(`rm-qty-${i}`)?.value) || 0
   const unit = val(`rm-unit-${i}`) || 'm'
   const purchaseRate = parseFloat(varOpt?.dataset?.purchaseRate) || 0
+  const selectedVariant = allVariants.find(v => v.id === varId)
+  const stock = selectedVariant ? availableVariantQty(selectedVariant) : 0
   const sellRate = parseFloat(rateInput?.value) || 0
   const total = qty * sellRate
 
@@ -1944,6 +1971,7 @@ function calcRMItem(i) {
     } else {
       subEl.innerHTML = `
         <span>Qty: <strong>${qty} ${unit}</strong></span>
+        <span>Available: <strong>${stock.toFixed(stock % 1 === 0 ? 0 : 2)} ${unit}</strong></span>
         ${showCosts ? `<span>Purchase: <strong>₹${purchaseRate.toFixed(2)}/${unit}</strong></span>` : ''}
         <span>Selling: <strong>₹${sellRate.toFixed(2)}/${unit}</strong></span>
         <span>Total: <strong style="color:#059669;">₹${total.toFixed(2)}</strong></span>`
@@ -1999,11 +2027,19 @@ function renderTrackComponents(i) {
       <i class="fa-solid fa-chevron-down text-xs text-muted" id="trk-comp-chevron-${i}"></i>
     </div>
     <div id="trk-comp-body-${i}" class="d-none">
-      ${components.map(name => `
+      ${components.map(name => {
+        const variant = resolveVariantForRecipeLabel(allVariants, name)
+        const stock = variant ? availableVariantQty(variant) : 0
+        const stockText = variant
+          ? `${stock.toFixed(stock % 1 === 0 ? 0 : 2)} ${variant.unit || 'pcs'} available`
+          : 'Not linked to inventory'
+        const color = variant && stock > 0 ? '#059669' : '#ef4444'
+        return `
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:5px;margin-bottom:4px;font-size:12px;">
           <i class="fa-solid fa-box" style="color:#6366f1;font-size:10px;flex-shrink:0;"></i>
           <span>${esc(name)}</span>
-        </div>`).join('')}
+          <span style="margin-left:auto;color:${color};font-weight:700;">${esc(stockText)}</span>
+        </div>`}).join('')}
     </div>`
 }
 
@@ -2129,8 +2165,8 @@ function buildDirectOrderItems() {
 function renderFGIList(i, query) {
   const lower = query.toLowerCase()
   const filtered = query
-    ? allDirectItems.filter(x => `${x.name} ${x.code} ${x.categoryLabel}`.toLowerCase().includes(lower))
-    : allDirectItems
+    ? allDirectItems.filter(x => x.quantity > 0 && `${x.name} ${x.code} ${x.categoryLabel}`.toLowerCase().includes(lower))
+    : allDirectItems.filter(x => x.quantity > 0)
   const listEl = document.getElementById(`fgi-list-${i}`)
   if (!listEl) return
   if (!filtered.length) {
@@ -2168,6 +2204,10 @@ function closeFGIDrop(i) {
 function selectFGIItem(i, id) {
   const item = allDirectItems.find(x => x.key === id)
   if (!item) return
+  if (Number(item.quantity || 0) <= 0) {
+    showAlert('order-alert', `${item.name || 'This item'} is out of stock and cannot be added to an order.`)
+    return
+  }
   selFGItem[i] = item
   closeFGIDrop(i)
 
@@ -2330,10 +2370,10 @@ function calcResaleItem(i) {
 }
 
 // ── BOM Toggle ────────────────────────────────────────────────────────────────
-function getComponentPlan(subType, wCm, qty) {
+function getComponentPlan(subType, wCm, qty, hCm = null, areaSqm = null) {
   const recipe = findRecipeForBlindType(allRecipes, subType)
   const wM = wCm / 100  // convert cm to meters for width-dependent parts
-  const components = (recipe?.recipe_items || []).map(item => {
+  const recipeComponents = (recipe?.recipe_items || []).map(item => {
     const plannedQty = item.is_width_dependent
       ? wM * qty                                    // width-dependent: qty = blind width × count
       : Number(item.quantity_per_unit || 0) * qty
@@ -2348,6 +2388,8 @@ function getComponentPlan(subType, wCm, qty) {
       line_total:         plannedQty * rate,
     }
   })
+  const mechanismPlan = getMechanismPartPlan(subType, wCm, qty, hCm, areaSqm)
+  const components = [...recipeComponents, ...mechanismPlan.components]
 
   return {
     components,
@@ -2388,6 +2430,80 @@ function toggleBOM(i) {
   chevron.className = `fa-solid fa-chevron-${hidden ? 'down' : 'up'} text-xs text-muted`
 }
 
+function mechanismOptionForLabel(label) {
+  const wanted = normCatalogName(label)
+  if (!wanted) return null
+  return rrpMechanismOptions.find(option => {
+    const labels = [option.name, option.source_label, option.price_key].filter(Boolean)
+    return labels.some(value => {
+      const key = normCatalogName(value)
+      return key === wanted || key.includes(wanted) || wanted.includes(key)
+    })
+  }) || null
+}
+
+function mechanismPartLinksForLabel(label) {
+  const option = mechanismOptionForLabel(label)
+  if (!option) return []
+  return (rrpMechanismPartLinks || [])
+    .filter(link => link.mechanism_option_id === option.id)
+    .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || (a.part_name || '').localeCompare(b.part_name || ''))
+}
+
+function plannedMechanismPartQty(link, { widthM = 0, heightM = 0, areaSqm = 0, qty = 1 } = {}) {
+  const base = Number(link.quantity_per_unit || 0)
+  const wastageFactor = 1 + (Math.max(Number(link.wastage_pct || 0), 0) / 100)
+  let planned = base
+  if (link.quantity_rule === 'per_blind') planned = base * qty
+  else if (link.quantity_rule === 'per_width_m') planned = base * widthM * qty
+  else if (link.quantity_rule === 'per_height_m') planned = base * heightM * qty
+  else if (link.quantity_rule === 'per_area_sqm') planned = base * areaSqm
+  return planned * wastageFactor
+}
+
+function getMechanismPartPlan(subType, wCm, qty, hCm = null, areaSqm = null) {
+  const widthM = Number(wCm || 0) / 100
+  const heightM = Number(hCm || 0) / 100
+  const orderQty = Number(qty || 1)
+  const measuredArea = Number(areaSqm ?? (widthM * heightM * orderQty)) || 0
+  const links = mechanismPartLinksForLabel(subType)
+  const components = links.map(link => {
+    const variant = allVariants.find(v => v.id === link.variant_id) || null
+    const plannedQty = plannedMechanismPartQty(link, {
+      widthM,
+      heightM,
+      areaSqm: measuredArea,
+      qty: orderQty,
+    })
+    const rate = Number(variant?.purchase_rate || 0)
+    return {
+      variant_id: link.variant_id || null,
+      planned_qty: plannedQty,
+      is_width_dependent: link.quantity_rule === 'per_width_m',
+      unit: variant?.unit || link.unit || 'pcs',
+      name: variant?.name || link.part_name || 'Component',
+      rate,
+      line_total: plannedQty * rate,
+      quantity_rule: link.quantity_rule,
+      mechanism_part_link_id: link.id,
+    }
+  })
+
+  return {
+    components,
+    total: components.reduce((sum, item) => sum + Number(item.line_total || 0), 0),
+  }
+}
+
+function fabricCostAmountForOrder(variant, areaSqm, fabricMultiplier = 1) {
+  const purchaseRatePerM = Number(variant?.purchase_rate || 0)
+  const fabricWidthM = Number(variant?.width_m || 0)
+  const costRateSqm = (fabricWidthM > 0 && purchaseRatePerM > 0)
+    ? purchaseRatePerM / fabricWidthM
+    : Number(variant?.base_rate_sqm || 0)
+  return Number(areaSqm || 0) * costRateSqm * Number(fabricMultiplier || 1)
+}
+
 // Legacy single-row calculator kept only as a reference while the multi-row
 // calculator below owns the active Create Order UI.
 function calcItemLegacySingleRow(i) {
@@ -2397,7 +2513,7 @@ function calcItemLegacySingleRow(i) {
   const fabricId = v?.id || null
   const rollW_m  = v?.width_m || 0
   const rate     = parseFloat(document.getElementById(`rate-${i}`)?.value) || v?.base_rate_sqm || 0
-  const fabricRequired = (BLIND_FABRIC_MAP[mainType] || []).length > 0
+  const fabricRequired = true
 
   const discPct  = Math.min(Math.max(parseFloat(document.getElementById(`disc-${i}`)?.value) || 0, 0), 100)
   const sellRate = discPct > 0 ? rate * (1 - discPct / 100) : rate
@@ -2428,7 +2544,7 @@ function calcItemLegacySingleRow(i) {
     let lineTotal   = 0
     let rollHtml   = ''
     let wastageHtml = ''
-    const isSheerDimout    = mainType === 'Sheer Dimout Blinds'
+    const isSheerDimout    = isDoubleClothMaster(mainType)
     const fabricMultiplier = isSheerDimout ? 2 : 1
 
     if (fabricId || (!fabricRequired && rate > 0)) {
@@ -2467,7 +2583,7 @@ function calcItemLegacySingleRow(i) {
       }
     }
 
-    const componentPlan = getComponentPlan(subType, w_cm, qty)
+    const componentPlan = getComponentPlan(subType, w_cm, qty, h_cm, areaSqm)
     lineTotal = fabricTotal
 
     // ── Full financial breakdown ──
@@ -2521,7 +2637,7 @@ function calcItemLegacySingleRow(i) {
   // BOM preview
   const bomWrap = document.getElementById(`bom-wrap-${i}`)
   const bomBody = document.getElementById(`bom-body-${i}`)
-  const bomComponentPlan = !isNaN(w_m) && !isNaN(h_m) ? getComponentPlan(subType, w_cm, qty) : { components: [], total: 0 }
+  const bomComponentPlan = !isNaN(w_m) && !isNaN(h_m) ? getComponentPlan(subType, w_cm, qty, h_cm, areaSqm) : { components: [], total: 0 }
   if (bomComponentPlan.components.length && !isNaN(w_m) && !isNaN(h_m)) {
     bomWrap.style.display = ''
     const rows = bomComponentPlan.components.map(item => {
@@ -2560,7 +2676,7 @@ function calcItem(i) {
   const fabricId = v?.id || null
   const rollW_m = Number(v?.width_m || 0)
   const rate = parseFloat(document.getElementById(`rate-${i}`)?.value) || Number(v?.base_rate_sqm || 0)
-  const fabricRequired = (BLIND_FABRIC_MAP[mainType] || []).length > 0
+  const fabricRequired = true
   const discPct = Math.min(Math.max(parseFloat(document.getElementById(`disc-${i}`)?.value) || 0, 0), 100)
   const sellRate = discPct > 0 ? rate * (1 - discPct / 100) : rate
   const dimRows = readFGDimensionRows(i)
@@ -2581,7 +2697,7 @@ function calcItem(i) {
   const areaSqm = validRows.reduce((sum, row) => sum + row.areaSqm, 0)
   const areaSqft = areaSqm * 10.7639
   const totalQty = validRows.reduce((sum, row) => sum + row.qty, 0)
-  const isSheerDimout = mainType === 'Sheer Dimout Blinds'
+  const isSheerDimout = isDoubleClothMaster(mainType)
   const fabricMultiplier = isSheerDimout ? 2 : 1
   const fabricTotal = (fabricId || (!fabricRequired && rate > 0)) ? areaSqm * sellRate : 0
   const componentPlan = getComponentPlanForFGRows(subType, validRows)
@@ -2741,7 +2857,7 @@ function updateGrand() {
   saveOrderDraft()
 }
 
-// ── Submit Order ──────────────────────────────────────────────────────────────
+// ── Generate Quotation ────────────────────────────────────────────────────────
 function setupOrderDraftAutosave() {
   clearOrderDraft()
 }
@@ -2773,7 +2889,7 @@ function quoteCustomerBlock(customer = selectedCustomer) {
   return [
     customer.name,
     customer.address,
-    [customer.city, customer.state].filter(Boolean).join(', '),
+    [customer.city, customer.state, customer.pincode].filter(Boolean).join(', '),
     customer.phone ? `Phone: ${customer.phone}` : '',
     customer.gstin ? `GST No. ${customer.gstin}` : '',
   ].filter(Boolean).join('\n')
@@ -2854,11 +2970,7 @@ async function submitOrder() {
   if (submitOrder._busy) return
 
   let custId = null
-  if (isNewCustomer) {
-    const name  = val('nc-name').trim()
-    if (!name)  { showAlert('order-alert', 'Customer name is required'); return }
-  } else {
-    if (!selectedCustomer) { showAlert('order-alert', 'Select a customer or use "New Customer"'); return }
+  if (!isNewCustomer && selectedCustomer) {
     custId = selectedCustomer.id
   }
 
@@ -2871,39 +2983,10 @@ async function submitOrder() {
     const fgVisible     = document.getElementById(`fg-section-${i}`)?.style.display !== 'none'
     const trackVisible  = document.getElementById(`track-section-${i}`)?.style.display !== 'none'
     const resaleVisible = document.getElementById(`resale-section-${i}`)?.style.display !== 'none'
-    const productCode   = selProductCode[i] || null
 
     if (resaleVisible) {
-      const fgItem = selFGItem[i]
-      const measure = resaleMeasureForItem(i, fgItem)
-      const qty    = measure.qty
-      const rate   = parseFloat(document.getElementById(`fgi-rate-${i}`)?.value)
-
-      if (!fgItem)          { showAlert('order-alert', `Item ${i}: select a Resale Item`); return }
-      if (isNaN(qty) || qty <= 0) { showAlert('order-alert', `Item ${i}: enter valid quantity`); return }
-      if (isNaN(rate) || rate <= 0) { showAlert('order-alert', `Item ${i}: enter a selling rate`); return }
-
-      items.push({
-        itemType:   'resale',
-        fgStockId:  fgItem.fgStockId || null,
-        fabricId:   fgItem.variantId || null,
-        qty:        measure.qty,
-        unit:       measure.widthCm && measure.heightCm ? 'sqm' : fgItem.unit,
-        rate,
-        lineTotal:  measure.billQty * rate,
-        areaSqm:    measure.areaSqm,
-        w_cm:       measure.widthCm,
-        h_cm:       measure.heightCm,
-        inputWidthRaw: measure.inputWidthRaw,
-        inputWidthUnit: measure.inputWidthUnit,
-        inputHeightRaw: measure.inputHeightRaw,
-        inputHeightUnit: measure.inputHeightUnit,
-        components: [],
-        wasteInfo:  null,
-        productCodeId: productCode?.id || null,
-        productName: productCode?.code || fgItem.name,
-      })
-      continue
+      showAlert('order-alert', `Item ${i}: Direct Order is no longer available. Select Product, Raw Material, or Track.`)
+      return
     }
 
     if (fgVisible) {
@@ -2915,12 +2998,11 @@ async function submitOrder() {
         const rollId   = selRoll[i] || null
         const rows     = readFGDimensionRows(i)
 
-        if (!mainType) { showAlert('order-alert', `Item ${i}: select a Blind Type`); return }
-        if (!subType)  { showAlert('order-alert', `Item ${i}: select a Sub-Type`); return }
+        if (!mainType) { showAlert('order-alert', `Item ${i}: select a Product Master`); return }
+        if (!subType)  { showAlert('order-alert', `Item ${i}: select a Mechanism`); return }
 
-        const catNames = BLIND_FABRIC_MAP[mainType] || []
-        if (catNames.length && !fabricId) {
-          showAlert('order-alert', `Item ${i}: select a Fabric`)
+        if (!fabricId) {
+          showAlert('order-alert', `Item ${i}: select an Inventory Item`)
           return
         }
 
@@ -2941,14 +3023,16 @@ async function submitOrder() {
         const discPctSub = Math.min(Math.max(parseFloat(document.getElementById(`disc-${i}`)?.value) || 0, 0), 100)
         const sellRateSub = discPctSub > 0 ? rate * (1 - discPctSub / 100) : rate
         const rollW_m = v?.width_m || 0
-        const isSheerDimout = mainType === 'Sheer Dimout Blinds'
+        const isSheerDimout = isDoubleClothMaster(mainType)
         const fabricMult = isSheerDimout ? 2 : 1
+        // Stock is checked after customer confirmation and management approval.
 
         for (const row of rows) {
           const areaSqm = row.areaSqm
           const fabricTotal = areaSqm * sellRateSub
-          const componentPlan = getComponentPlan(subType, row.w_cm, row.qty)
+          const componentPlan = getComponentPlan(subType, row.w_cm, row.qty, row.h_cm, row.areaSqm)
           const components = componentPlan.components
+          const fabricCostTotal = fabricCostAmountForOrder(v, areaSqm, fabricMult)
 
           let wasteInfo = null
           if (fabricId && rollW_m > 0) {
@@ -2976,10 +3060,10 @@ async function submitOrder() {
             areaSqm,
             rate: sellRateSub,
             lineTotal: fabricTotal,
+            costAmount: fabricCostTotal + componentPlan.total,
             components,
             wasteInfo,
-            productCodeId: productCode?.id || null,
-            productName: productCode?.code || subType,
+            productName: v?.name || subType,
           })
         }
         continue
@@ -2995,13 +3079,12 @@ async function submitOrder() {
       const hUnit    = document.getElementById(`hu-${i}`)?.value || 'cm'
       const qty      = parseFloat(document.getElementById(`q-${i}`)?.value)
 
-      if (!mainType) { showAlert('order-alert', `Item ${i}: select a Blind Type`); return }
-      if (!subType)  { showAlert('order-alert', `Item ${i}: select a Sub-Type`); return }
+      if (!mainType) { showAlert('order-alert', `Item ${i}: select a Product Master`); return }
+      if (!subType)  { showAlert('order-alert', `Item ${i}: select a Mechanism`); return }
       if (isNaN(qty) || qty <= 0) { showAlert('order-alert', `Item ${i}: enter valid quantity`); return }
 
-      const catNames = BLIND_FABRIC_MAP[mainType] || []
-      if (catNames.length && !fabricId) {
-        showAlert('order-alert', `Item ${i}: select a Fabric`); return
+      if (!fabricId) {
+        showAlert('order-alert', `Item ${i}: select an Inventory Item`); return
       }
 
       if (isNaN(wRaw) || wRaw <= 0) { showAlert('order-alert', `Item ${i}: enter valid width`); return }
@@ -3024,16 +3107,17 @@ async function submitOrder() {
       const sellRateSub    = discPctSub > 0 ? rate * (1 - discPctSub / 100) : rate
       const rollW_m        = v?.width_m || 0
       const areaSqm        = w_m * h_m * qty
-      const isSheerDimout  = mainType === 'Sheer Dimout Blinds'
+      const isSheerDimout  = isDoubleClothMaster(mainType)
       const fabricMult     = isSheerDimout ? 2 : 1
       const fabricTotal    = areaSqm * sellRateSub
-      const componentPlan  = getComponentPlan(subType, w_cm, qty)
+      const componentPlan  = getComponentPlan(subType, w_cm, qty, h_cm, areaSqm)
       const components     = componentPlan.components
       const lineTotal      = fabricTotal
+      const fabricCostTotal = fabricCostAmountForOrder(v, areaSqm, fabricMult)
 
       let wasteInfo = null
       if (fabricId && rollW_m > 0) {
-        const isSheerDimout = mainType === 'Sheer Dimout Blinds'
+        const isSheerDimout = isDoubleClothMaster(mainType)
         const fabricMultiplier = isSheerDimout ? 2 : 1
         wasteInfo = {
           variant_id:    fabricId,
@@ -3053,9 +3137,9 @@ async function submitOrder() {
         inputHeightRaw: hRaw,
         inputHeightUnit: hUnit,
         areaSqm, rate: sellRateSub, lineTotal,
+        costAmount: fabricCostTotal + componentPlan.total,
         components, wasteInfo,
-        productCodeId: productCode?.id || null,
-        productName: productCode?.code || subType,
+        productName: v?.name || subType,
       })
     } else if (!fgVisible && !trackVisible) {
       const varSel  = document.getElementById(`rm-var-${i}`)
@@ -3068,6 +3152,8 @@ async function submitOrder() {
       if (!varId)            { showAlert('order-alert', `Item ${i}: select a variant`); return }
       if (isNaN(qty) || qty <= 0) { showAlert('order-alert', `Item ${i}: enter valid quantity`); return }
       if (isNaN(rate) || rate <= 0) { showAlert('order-alert', `Item ${i}: enter a selling rate`); return }
+      const variant = allVariants.find(v => v.id === varId)
+      const purchaseCost = Number(variant?.purchase_rate || 0)
 
       items.push({
         itemType: 'raw_material',
@@ -3075,11 +3161,11 @@ async function submitOrder() {
         rollId: null,
         qty, unit, rate,
         lineTotal: qty * rate,
+        costAmount: purchaseCost > 0 ? qty * purchaseCost : 0,
         areaSqm: unit === 'm' || unit === 'ft' ? cvtUnit(qty, unit, 'm') : qty,
         components: [],
         wasteInfo: null,
-        productCodeId: productCode?.id || null,
-        productName: productCode?.code || varOpt?.dataset?.name || varOpt?.textContent || null,
+        productName: varOpt?.dataset?.name || varOpt?.textContent || null,
       })
     }
 
@@ -3127,8 +3213,11 @@ async function submitOrder() {
           plannedQty:  isSection
             ? chargeableFt * qty
             : (component.isWidthDependent ? chargeableFt * qty : (component.quantityPerUnit || 0) * qty),
+          rate: Number(matched?.purchase_rate || 0),
         }
       })
+      const trackCostAmount = trkComponents.reduce((sum, component) => sum + (Number(component.plannedQty || 0) * Number(component.rate || 0)), 0)
+      // Track component stock is also checked later in the approval/processing step.
 
       items.push({
         itemType:      'track',
@@ -3140,11 +3229,11 @@ async function submitOrder() {
         chargeableFt,
         rate,
         lineTotal:     qty * rate,
+        costAmount:    trackCostAmount,
         trkComponents,
         components:    [],
         wasteInfo:     null,
-        productCodeId:  productCode?.id || null,
-        productName:    productCode?.code || trackType,
+        productName:    trackType,
       })
     }
   }
@@ -3152,14 +3241,19 @@ async function submitOrder() {
   const btn = document.getElementById('submit-btn')
   submitOrder._busy = true
   btn.disabled = true
-  btn.innerHTML = '<span class="spinner spinner-sm"></span> Creating…'
+  btn.innerHTML = '<span class="spinner spinner-sm"></span> Generating...'
 
   let createdOrderId = null
   try {
-    if (isNewCustomer) {
-      const newCustomer = await saveFilledCustomerProfile()
-      if (!newCustomer) throw new Error('Customer profile could not be saved')
-      custId = newCustomer.id
+    if (isNewCustomer && currentProfile?.role === 'admin') {
+      const customerPayload = CUSTOMER_SOURCE.readForm('nc', { createdBy: currentProfile?.id })
+      const hasCustomerProfileData = Object.entries(customerPayload)
+        .some(([key, value]) => key !== 'created_by' && Boolean(value))
+      if (hasCustomerProfileData) {
+        const newCustomer = await saveFilledCustomerProfile()
+        if (!newCustomer) throw new Error('Customer profile could not be saved')
+        custId = newCustomer.id
+      }
     }
 
     const { data: uidData } = await db.rpc('generate_order_uid')
@@ -3169,8 +3263,13 @@ async function submitOrder() {
       cust_id:      custId,
       customer_id:  currentProfile.id,
       dealer_name:  selectedCustomer?.name || val('nc-name') || 'Walk-in',
-      status:       'inquiry',
+      status:       'quotation',
+      ticket_id:    activeTicket?.id || null,
+      quotation_created_at: new Date().toISOString(),
+      approval_status: 'not_requested',
+      fulfilment_mode: 'stock_pending',
       total_amount: items.reduce((s, it) => s + it.lineTotal, 0),
+      cost_amount:  items.reduce((s, it) => s + Number(it.costAmount || 0), 0),
       notes:        val('order-notes') || null,
       order_uid:    orderUid,
       order_date:   val('order-date') || null,
@@ -3205,15 +3304,10 @@ async function submitOrder() {
         // For tracks: sale_unit = 'ft', blind_type = track sub-type
         sale_unit:        item.itemType === 'track' ? 'track' : (item.unit || null),
         blind_type:       item.itemType === 'track' ? (item.trackType || null) : (item.subType || null),
-        product_code_id:  item.productCodeId || null,
         product_name:     item.productName || null,
         fabric_deducted:  false,
       }
       let oiResult = await db.from('order_items').insert(itemPayload).select('id').single()
-      if (oiResult.error && /product_code_id/i.test(oiResult.error.message || '')) {
-        delete itemPayload.product_code_id
-        oiResult = await db.from('order_items').insert(itemPayload).select('id').single()
-      }
       if (oiResult.error && /input_width_raw|input_width_unit|input_height_raw|input_height_unit|input_length_raw|input_length_unit|input_length_ft|chargeable_length_ft/i.test(oiResult.error.message || '')) {
         delete itemPayload.input_width_raw
         delete itemPayload.input_width_unit
@@ -3223,10 +3317,6 @@ async function submitOrder() {
         delete itemPayload.input_length_unit
         delete itemPayload.input_length_ft
         delete itemPayload.chargeable_length_ft
-        oiResult = await db.from('order_items').insert(itemPayload).select('id').single()
-      }
-      if (oiResult.error && /product_code_id/i.test(oiResult.error.message || '')) {
-        delete itemPayload.product_code_id
         oiResult = await db.from('order_items').insert(itemPayload).select('id').single()
       }
       const { data: oi, error: oiErr } = oiResult
@@ -3239,6 +3329,7 @@ async function submitOrder() {
           order_id:           orderId,
           order_item_id:      orderItemId,
           variant_id:         c.variant_id,
+          component_name:     c.variant_id ? null : c.name,
           planned_qty:        c.planned_qty,
           is_width_dependent: c.is_width_dependent,
           unit:               c.unit,
@@ -3269,8 +3360,10 @@ async function submitOrder() {
 
     if (activeTicket?.id) {
       const { error: ticketErr } = await db.from('order_tickets').update({
-        status: 'converted',
+        status: 'confirmed',
         converted_order_id: orderId,
+        confirmed_at: new Date().toISOString(),
+        confirmed_by: currentProfile?.id || null,
         converted_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }).eq('id', activeTicket.id)
@@ -3283,7 +3376,7 @@ async function submitOrder() {
       ticket_id: activeTicket?.id || null,
     })
     clearOrderDraft()
-    toast('Order created! Move it to processing when ready for production.')
+    toast('Quotation generated')
     const isEmbed = new URLSearchParams(window.location.search).get('embed') === '1'
     if (isEmbed && window.parent && window.parent !== window) {
       if (typeof window.parent.onCreateOrderComplete === 'function') {
@@ -3292,10 +3385,10 @@ async function submitOrder() {
         window.parent.closeCreateOrderPanel()
         window.parent.loadOrders?.()
       } else {
-        window.location.href = `order-detail.html?id=${orderId}`
+        window.location.href = activeTicket?.id ? `ticket-detail.html?id=${activeTicket.id}` : `order-detail.html?id=${orderId}`
       }
     } else {
-      window.location.href = `order-detail.html?id=${orderId}`
+      window.location.href = activeTicket?.id ? `ticket-detail.html?id=${activeTicket.id}` : `order-detail.html?id=${orderId}`
     }
   } catch (err) {
     if (createdOrderId) {
@@ -3309,7 +3402,7 @@ async function submitOrder() {
     }
     showAlert('order-alert', err.message)
     btn.disabled = false
-    btn.innerHTML = '<i class="fa-solid fa-check"></i> Submit Order'
+    btn.innerHTML = '<i class="fa-solid fa-file-invoice"></i> Generate Quotation'
     submitOrder._busy = false
   }
 }
@@ -3358,9 +3451,13 @@ function buildInventoryMatchKeys(name) {
     'Roller with Headrail-',
     'Sheer Dimout Plain Cassette-',
     'Sheer Dimout Decorative Cassette-',
+    'Sheer Dimout Decorative Square Cassette-',
     'S-Contour-',
     'Roller with Plain Cassette-',
     'Roller with Decorative Cassette-',
+    'Roller with Decorative Square Cassette-',
+    'Vertical Blinds-',
+    'Roman Blinds-',
   ]
 
   const keys = new Set()

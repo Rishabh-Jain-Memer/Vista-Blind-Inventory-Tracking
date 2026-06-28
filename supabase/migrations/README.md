@@ -1,45 +1,66 @@
 # Supabase Migration Flow
 
-This folder is now the only migration lane for the current app.
+This folder is the only SQL setup lane for the new Vista Blind clone.
 
-Run files manually in Supabase SQL Editor in this order:
+Run these files manually in Supabase SQL Editor in order:
 
-1. `001_reset_rebuild_inventory_schema.sql`
-2. `002_import_inventory_inflow_new.sql`
-3. `003_disable_inventory_rls_for_app.sql`
-4. `004_import_supporting_workbooks.sql`
-5. `005_profiles_suppliers_support.sql`
-6. `006_fix_profile_optional_fields_and_rls.sql`
-7. `007_order_statuses_and_supplier_rls_repair.sql`
-8. `008_order_executor_assignment.sql`
-9. `009_refresh_recipe_catalog.sql`
-10. `010_import_track_recipes.sql`
-11. `011_rrp_catalog.sql`
-12. `012_security_hardening.sql`
-13. `013_product_codes.sql`
-14. `014_order_invoice_details.sql`
-15. `015_rrp_catalog_all_blinds.sql`
-16. `016_repair_torrent_inventory_link_and_delete_cleanup.sql`
-17. `017_order_decimal_quantities_and_rollback_dedupe.sql`
-18. `018_cleanup_failed_order_headers.sql`
-19. `019_execute_order_rpc_and_executor_wastage_update.sql`
-20. `020_order_item_input_measurements.sql`
-21. `021_import_vertical_blinds_stock.sql`
-22. `022_refresh_vertical_blinds_stock_rates.sql`
-23. `023_order_tickets.sql`
-24. `024_order_tickets_all_roles.sql`
-25. `025_order_ticket_inquiry_followups.sql`
-26. `026_sales_order_read_access.sql`
-27. `027_sales_order_update_access.sql`
-28. `028_employee_profile_read_access.sql`
-29. `029_ticket_sequential_numbering.sql`
-30. `030_sales_order_item_edit_access.sql`
-31. `031_ticket_inquiry_date_default.sql`
-32. `032_ticket_plain_sequential_uid.sql`
-33. `033_order_quote_forms_and_downloads.sql`
-34. `034_stock_orders_and_downloads.sql`
-35. `035_clean_app_data_framework.sql`
+1. `001_new_project_empty_schema.sql`
+2. Create the first Auth user in Supabase Dashboard.
+3. `002_link_first_admin_profile.sql`
+4. `003_master_nodes_structure.sql`
+5. Optional test stock import: `004_import_inventory_inflow_stock.sql`
+6. `005_import_new_rrp_2026.sql`
+7. `006_import_excel_catalog_and_track_structures.sql`
+8. `007_cut_pieces_wastage_activity.sql`
+9. `008_fix_order_ticket_number_sequence.sql`
+10. `009_roles_approval_workflow.sql`
+11. `010_import_vista_inflow_rishi_masters.sql`
+12. `011_app_level_username_auth.sql`
+13. `012_master_page_app_session_permissions.sql`
+14. `013_rrp_rule_engine.sql`
+15. `014_mechanism_part_links.sql`
+16. `015_mechanism_part_links_anon_permissions.sql`
 
-The previous historical migrations were removed from the working tree because they mixed older schemas, old Excel imports, and partial fixes. Keeping one clean flow avoids errors such as missing `inv_rolls`, missing `normalized_name`, duplicate `batch_code`, and double-counted inventory.
+CLI note: `supabase projects list` shows this checkout linked to `knawjdrsdqgyfzqzddix`, but direct DB commands currently hang without a remote DB URL/password. See `Context/SUPABASE_STATUS.md`. Until `VISTA_NEW_DB_URL` or the remote DB password is available, SQL Editor is the reliable path for applying migrations.
 
-Migration `012` is the deployment hardening pass. It removes anonymous table grants and re-enables RLS for the app's active tables. Migration `013` adds the product-code catalog imported from `Excel File/Product Codes.xlsx`. Migration `021` imports `Excel File/Vertical Blinds Stock.xlsx` into the current inventory hierarchy without resetting existing stock. Migration `022` refreshes the complete vertical blind stock/rate set from the updated workbook while preserving already-consumed quantities on existing imported rolls. Migration `023` adds pre-order tickets that can be converted through the normal Create Order flow. Migration `024` opens ticket read/write policies to all authenticated employee roles so Tickets can be a shared sidebar tab. Migration `025` adds spreadsheet-style inquiry fields and immutable follow-up history for tickets. Migration `026` lets sales users read every order and its line/component detail. Migration `027` lets sales maintain shared order flow fields across all orders while delete access remains admin-only. Migration `028` lets employee roles read staff profile display rows so ticket creator, owner, and follow-up names resolve instead of showing profile UUIDs. Migration `029` replaces random ticket IDs with sequence-backed IDs in `TKT-NNNNDDMMYY` format and backfills existing tickets by creation order. Migration `030` lets sales users edit order line items/components on shared open orders. Migration `031` reasserts the database default for ticket inquiry dates so the UI can keep the date field hidden while inserts stay stable. Migration `032` changes ticket IDs to plain sequence numbers such as `0001`, `0002`, and backfills existing tickets in creation order. Migration `033` adds editable order quote/proforma defaults and generated quote download history. Migration `034` adds pending stock orders, stock order items, and stock order download history so Create Purchase Order can create a supplier order first and receive inventory later. Migration `035` clears public app data for a clean structural framework while preserving schema, RLS, functions, triggers, Supabase Auth users, and profiles by default.
+`001_new_project_empty_schema.sql` creates the empty app schema without importing old workbook data.
+`002_link_first_admin_profile.sql` links the first Auth user to `public.profiles` as admin.
+`003_master_nodes_structure.sql` adds `master_nodes` for main masters and nested sub masters, including `exclude_from_pnc_name` for labels that should be skipped later when final names are generated. It also adds separate mechanism tables:
+
+- `master_pages`
+- `mechanism_groups`
+- `mechanism_options`
+- `master_mechanism_groups`
+- `master_inventory_sync_items`
+
+The mechanism seed data is derived from `Excel File/Vista Dealer RRP April 2026.xlsx` and `Excel File/Vista Inventory Inflow New.xlsx` for labels such as headrail, cassette, mono mechanism, and laddertape mechanism.
+
+The master seed also reads color/code structure from `Excel File/Vista Inventory Inflow New.xlsx` for Roller, Sheer Dimout, and S-Contour fabrics. These are added as nested sub masters under each fabric family with a skipped `Color` label, so generated names can include values like `551 White`, `CN-01 White`, or `SDAM-05` without including the literal word `Color`.
+
+No stock quantities, purchase rates, rolls, or movements are imported by this file.
+
+`004_import_inventory_inflow_stock.sql` imports only positive-quantity stock rows from `Excel File/Vista Inventory Inflow New.xlsx` into the current `inv_*` inventory tables. It is re-runnable: matching variant/batch rows are updated instead of duplicated.
+
+`005_import_new_rrp_2026.sql` imports the May 2026 RRP PDF into `rrp_entries`: structured blind rates, automation, hospital/manual tracks, drapery rods, Soffio/Heritage rods, and wooden flooring. It adds source tracking columns to `rrp_entries`, stores extracted text for all 50 PDF pages in `rrp_source_pages`, and seeds related blind master/mechanism labels. RRP rates are stored in `price_map` so new products or mechanism columns can be added without changing the table shape.
+
+`006_import_excel_catalog_and_track_structures.sql` reads the Excel workbook catalog sources, stores sheet audit snapshots, imports track and blind component recipes, creates missing component catalog variants without stock quantities, adds awning component RRP rows from `Add Stock Example.xlsx`, and seeds scalable master pages for tracks, awnings, rods, and flooring.
+
+`007_cut_pieces_wastage_activity.sql` restores cut-piece wastage tracking and activity-log support.
+
+`008_fix_order_ticket_number_sequence.sql` restores the ticket number sequence trigger.
+
+`009_roles_approval_workflow.sql` adds the current four-role model (`admin`, `management`, `sales`, `executer`), the ticket states (`active`, `confirmed`, `cancelled`), quotation/order approval fields, management proforma approval RPC, stock/direct-order decision RPC, and Admin-only customer/profile write policies.
+
+`010_import_vista_inflow_rishi_masters.sql` reads `Excel File/Vista-Inflow Data to Rishi.xlsx` and imports structure-only masters from the repeated RM/FG/inventory rows. It deduplicates fabric, parts, track, and motor labels into master pages such as Fabrics, Parts, Tracks, and Motors. It does not import stock quantities, purchase rates, rolls, movements, or RRP values.
+
+`011_app_level_username_auth.sql` adds database-backed app login with `profiles.username`, password hashes, and `app_sessions`. The browser no longer depends on Supabase Auth sessions for login. It gives all roles full website visibility for now while keeping employee/customer/supplier profile creation and profile mutation gated to Admin in the UI/RPC flow.
+
+`012_master_page_app_session_permissions.sql` opens the master/mechanism tables to the browser app's username/password session model while keeping writes behind the app-level admin role gate.
+
+`013_rrp_rule_engine.sql` adds the scalable RRP layer: price books, inherited master-level RRP rules, and per-mechanism override/add-on prices. The old `rrp_entries` import remains as source/reference data; new quotations prefer these rules first and fall back to legacy RRP matching when no rule exists.
+
+`014_mechanism_part_links.sql` adds `mechanism_part_links`, which lets each mechanism option link to inventory variants with scalable quantity rules (`fixed`, `per_blind`, `per_width_m`, `per_height_m`, and `per_area_sqm`). Create Order reads these links to plan `order_components` and include linked parts in order cost.
+
+`015_mechanism_part_links_anon_permissions.sql` repairs browser permissions for `mechanism_part_links` after 014. The app-level login runs over the anon key, so this table needs anon grants and anon RLS policies, matching migration 012's master/mechanism table permissions.
+
+The older import, cleanup, RRP, component, stock-refresh, and historical patch migrations were removed from this clone's active migration lane. Do not run old migrations into this new website database unless the owner explicitly asks to restore legacy data.

@@ -31,7 +31,7 @@ function corsHeaders(req: Request) {
   }
 }
 
-const allowedRoles = new Set(["admin", "executer", "sales"])
+const allowedRoles = new Set(["admin", "management", "sales", "executer"])
 
 function json(req: Request, body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {

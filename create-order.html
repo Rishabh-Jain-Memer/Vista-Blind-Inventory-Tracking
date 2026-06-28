@@ -2,10 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>New Order - Vista Manufacturing</title>
+  <title>Generate Quotation - Vista Manufacturing</title>
   <script>
-    if (new URLSearchParams(location.search).get('embed') === '1') {
+    const createOrderParams = new URLSearchParams(location.search)
+    if (createOrderParams.get('embed') === '1') {
       document.documentElement.classList.add('embed-mode')
+    }
+    if (createOrderParams.get('ticket')) {
+      document.documentElement.classList.add('ticket-conversion-embed')
     }
   </script>
   <link rel="stylesheet" href="css/style.css">
@@ -22,11 +26,11 @@
 
       <div class="page-header workspace-hero" style="margin-bottom:1.5rem">
         <div>
-          <h1>Create Order</h1>
-          <p>Select customer, choose blind type or raw material, and build the order items.</p>
+          <h1>Generate Quotation</h1>
+          <p>Select customer, choose blind type or raw material, and build the quotation items.</p>
         </div>
-        <button class="btn btn-secondary" id="order-master-btn" onclick="openOrderStockMasterModal()">
-          <i class="fa-solid fa-layer-group"></i> Create Stock Master
+        <button class="btn btn-secondary" id="order-master-btn" onclick="window.top.location.href='masters.html'">
+          <i class="fa-solid fa-sitemap"></i> Masters
         </button>
       </div>
 
@@ -70,7 +74,7 @@
         <div id="cust-new-section" style="padding:16px;display:none;">
           <div class="form-row cols-2">
             <div class="form-group">
-              <label>Full Name <span style="color:#ef4444">*</span></label>
+              <label>Full Name</label>
               <input id="nc-name" placeholder="e.g. Ramesh Gupta">
             </div>
             <div class="form-group">
@@ -112,8 +116,8 @@
       <div class="card mb-4" style="margin-bottom:1rem;">
         <div class="card-header">
           <div>
-            <h2>2. Order Details</h2>
-            <span class="text-muted text-sm">Reference details shared by all order items.</span>
+            <h2>2. Quotation Details</h2>
+            <span class="text-muted text-sm">Reference details shared by all quotation items.</span>
           </div>
         </div>
         <div style="padding:16px;">
@@ -133,8 +137,8 @@
       <div class="card" style="margin-bottom:1rem;">
         <div class="card-header">
           <div>
-            <h2>3. Quote / Proforma Invoice</h2>
-            <span class="text-muted text-sm">Customer-facing quote details saved with this order.</span>
+            <h2>3. Quote / Proforma Details</h2>
+            <span class="text-muted text-sm">Quote details are saved now. GST and bank details are used only for approved proforma invoices.</span>
           </div>
         </div>
         <div style="padding:16px;">
@@ -198,7 +202,7 @@
         <div class="card-header">
           <div>
             <h2>4. Items</h2>
-            <span class="text-muted text-sm">Add every blind, raw material, track, or direct order item here.</span>
+            <span class="text-muted text-sm">Add blinds, raw materials, or tracks for quotation. Stock is checked after approval.</span>
           </div>
         </div>
         <div style="padding:16px;">
@@ -218,7 +222,7 @@
               <div class="total-value" id="grand-total">&#8377;0.00</div>
             </div>
             <button class="btn btn-primary" id="submit-btn" onclick="submitOrder()" style="padding:12px 32px;font-size:16px;">
-              <i class="fa-solid fa-check"></i> Submit Order
+              <i class="fa-solid fa-file-invoice"></i> Generate Quotation
             </button>
           </div>
         </div>
@@ -240,6 +244,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/auth.js"></script>
+<script src="js/test-mode.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/customer-source.js"></script>
 <script src="js/inventory-source.js"></script>

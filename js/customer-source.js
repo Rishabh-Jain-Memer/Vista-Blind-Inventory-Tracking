@@ -5,7 +5,7 @@
 */
 
 const CUSTOMER_SOURCE = (() => {
-  const SELECT = 'id, name, contact_person, phone, phone2, email, gstin, address, city, state, notes, created_by, updated_at'
+  const SELECT = 'id, name, contact_person, phone, phone2, email, gstin, address, city, state, pincode, notes, created_by, updated_at'
 
   function esc(value) {
     return String(value ?? '')
@@ -32,6 +32,7 @@ const CUSTOMER_SOURCE = (() => {
       address: customer.address || '',
       city: customer.city || '',
       state: customer.state || '',
+      pincode: customer.pincode || '',
       notes: customer.notes || '',
       created_by: customer.created_by || null,
       updated_at: customer.updated_at || null,
@@ -66,7 +67,7 @@ const CUSTOMER_SOURCE = (() => {
     const nameLabel = options.nameLabel || 'Name'
     return `
       <div class="form-row cols-2">
-        <div class="form-group"><label>${esc(nameLabel)} <span style="color:#ef4444">*</span></label><input id="${prefix}-name" value="${esc(c.name)}" placeholder="Customer name"></div>
+        <div class="form-group"><label>${esc(nameLabel)}</label><input id="${prefix}-name" value="${esc(c.name)}" placeholder="Customer name"></div>
         <div class="form-group"><label>Contact Person</label><input id="${prefix}-contact" value="${esc(c.contact_person)}" placeholder="Contact person"></div>
       </div>
       <div class="form-row cols-2">
@@ -78,9 +79,10 @@ const CUSTOMER_SOURCE = (() => {
         <div class="form-group"><label>GSTIN</label><input id="${prefix}-gstin" value="${esc(c.gstin)}" placeholder="GST number" style="text-transform:uppercase;"></div>
       </div>
       <div class="form-group"><label>Address</label><input id="${prefix}-address" value="${esc(c.address)}" placeholder="Street address"></div>
-      <div class="form-row cols-2">
+      <div class="form-row cols-3">
         <div class="form-group"><label>City</label><input id="${prefix}-city" value="${esc(c.city)}" placeholder="City"></div>
         <div class="form-group"><label>State</label><input id="${prefix}-state" value="${esc(c.state)}" placeholder="State"></div>
+        <div class="form-group"><label>Pincode</label><input id="${prefix}-pincode" value="${esc(c.pincode)}" placeholder="Pincode"></div>
       </div>
       <div class="form-group"><label>Notes</label><input id="${prefix}-notes" value="${esc(c.notes)}" placeholder="Profile notes"></div>`
   }
@@ -96,6 +98,7 @@ const CUSTOMER_SOURCE = (() => {
       address: clean(document.getElementById(`${prefix}-address`)?.value),
       city: clean(document.getElementById(`${prefix}-city`)?.value),
       state: clean(document.getElementById(`${prefix}-state`)?.value),
+      pincode: clean(document.getElementById(`${prefix}-pincode`)?.value),
       notes: clean(document.getElementById(`${prefix}-notes`)?.value),
     }
     if (options.createdBy) payload.created_by = options.createdBy
@@ -114,6 +117,7 @@ const CUSTOMER_SOURCE = (() => {
       address: c.address,
       city: c.city,
       state: c.state,
+      pincode: c.pincode,
       notes: c.notes,
     })) {
       const el = document.getElementById(`${prefix}-${key}`)

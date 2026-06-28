@@ -23,13 +23,19 @@ After meaningful changes, update Context before handing off. At minimum append `
 - Fabric valuation is `running_metres * rate`, not square metres times rate.
 - `settings.html` is still the route, but the visible page name is `Profiles`.
 - Do not re-add old migrations, old Python import scripts, `package.json`, or `node_modules`.
-- `create.html` is the sidebar Create tab. It owns Create Purchase Order and embeds `create-order.html?embed=1`.
+- `create.html` is the sidebar Create tab. It owns Create Purchase Order, embeds `create-order.html?embed=1`, and embeds `tickets.html?embed=1`.
 - `create-order.html` remains the full customer order form. Do not duplicate its order submission logic inside `create.html`.
-- `tickets.html` is a top-level sidebar page for all employee roles. `order_tickets` is only the pre-order requirement layer. Confirmed production/accounting work must still become normal `orders`, `order_items`, and `order_components` through `js/create-order.js`.
+- Tickets are an active CRM workflow and sidebar tab, and `tickets.html` also remains embeddable under Create via `tickets.html?embed=1`. `order_tickets` is only the pre-order requirement layer. Confirmed production/accounting work must still become normal `orders`, `order_items`, and `order_components` through `js/create-order.js`.
+- The old Components page and Inventory > Finished Product Code UI have been removed from the active website UI in this clone. Do not re-add those pages/tabs unless the owner asks.
+- RRP, Wastage, Activity Log, Tickets, Orders, and Reports are active workflow/sidebar tabs in the current clone.
+- Main masters are neutral top-level groups, not Fabric/Parts/Finished Goods types.
+- Masters structure lives in `master_nodes`. The `exclude_from_pnc_name` flag means a master label should be skipped when final inventory names are generated. Masters can sync zero-stock catalog rows into `inv_categories`, `inv_products`, and `inv_variants`, but must not show combination lists inside Masters or write pieces, rates, quantities, rolls, stock, or movements.
+- Mechanisms are separate from normal masters. Use `mechanism_groups`, `mechanism_options`, and `master_mechanism_groups` for feature dimensions such as headrail, cassette, mono mechanism, and laddertape mechanism.
+- Mechanism option BOM links live in `mechanism_part_links`. They link mechanism options to inventory variants with quantity rules and feed planned `order_components`; they must not directly write stock rolls or movements.
 - Sidebar order is user/browser configurable through `localStorage`; do not hard-reset user ordering unless the owner asks.
-- Visible UI wording is now `Components`, not `Recipes`. Keep legacy table/file names like `product_recipes`, `recipe_items`, `recipes.html`, and `js/recipes.js` unless the owner explicitly asks for a schema/file rename.
-- `supabase/migrations/035_clean_app_data_framework.sql` is the current clean-framework wipe. It clears public app rows but keeps structure, RLS, functions, and Auth users/profiles by default so an admin can still log in.
-- Major website/database changes must use the staging lane. Production hosts force live Supabase in `js/config.js`; only local hosts can opt into staging through `dev-environment.html` / browser localStorage.
+- `supabase/migrations` is the only active SQL lane for this clone. The current clean sequence runs from `001_new_project_empty_schema.sql` through `015_mechanism_part_links_anon_permissions.sql`.
+- Because the app uses anon-key browser sessions plus app-level login, new app tables often need anon grants/RLS policies in addition to authenticated policies. `015_mechanism_part_links_anon_permissions.sql` exists specifically to repair `permission denied for table mechanism_part_links` after 014.
+- The original/live Supabase project must stay untouched. Browser pages in this clone always use the isolated New Supabase project from `js/config.js`; the old `dev-environment.html` / localStorage staging switch has been removed.
 
 ## Correct Database Tables
 
@@ -49,6 +55,11 @@ Use these names:
 | Inventory variants/items | `inv_variants` |
 | Physical stock batches/rolls/opening rows | `inv_rolls` |
 | Inventory ledger/movements | `inv_movements` |
+| Master structure | `master_nodes` |
+| Mechanism groups | `mechanism_groups` |
+| Mechanism options | `mechanism_options` |
+| Mechanism-to-master assignments | `master_mechanism_groups` |
+| Mechanism option BOM part links | `mechanism_part_links` |
 | Product BOM components | `product_recipes` |
 | Product BOM component lines | `recipe_items` |
 | Purchased finished goods | `fg_stock` |
@@ -95,13 +106,13 @@ Do not convert these into ES modules unless you intentionally convert every HTML
 
 | File | Do not forget |
 |---|---|
+| `js/masters.js` | Admin-only structure setup. Creates/edits/deletes neutral main masters and nested sub masters in `master_nodes`, manages separate mechanism groups/options/assignments, toggles `exclude_from_pnc_name`, and syncs generated zero-stock catalog variants. Deleting a master must not delete already-synced inventory rows. It must not create visible combination lists, pieces, rates, quantities, stock rows, or inventory movements. |
 | `js/inventory.js` | Reads `inv_*` tables and `fg_stock`; calculates visible stock cards. |
 | `js/reports.js` | Current inward/outward drilldown logic. Reuse grouping patterns for customers/profiles instead of duplicating badly. |
 | `js/create-order.js` | Uses `product_recipes`, `recipe_items`, `order_components`, and inventory variants. Tracks now prefer DB-backed component rows when imported. |
 | `js/create.js` | Create tab controller. Create Purchase Order uses suppliers and inv categories/products/variants to create pending `stock_orders` and `stock_order_items`. Embeds Create Order. |
 | `js/stock-order-detail.js` | Stock order receive/download controller. Writes `inv_rolls` and `inv_movements` only when a pending stock order is received. |
 | `js/order-detail.js` | Also uses components/order BOM data and order status/production detail. |
-| `js/recipes.js` | Admin-only Components page. Visible wording says Components, but this file still reads/writes `product_recipes` and `recipe_items`. |
 | `js/sidebar.js` | Role routing, nav labels, and drag-to-reorder sidebar ordering live here. |
 | `js/settings.js` | Admin profile/customer management despite historical filename. |
 | `js/tickets.js` | Ticket queue and new-ticket capture. Row clicks open `ticket-detail.html`. |
@@ -109,11 +120,12 @@ Do not convert these into ES modules unless you intentionally convert every HTML
 
 ## Create Tab Rules
 
-`create.html` has two tabs:
+`create.html` has three tabs:
 
 ```text
 Create Purchase Order
-Create Order
+Create Sales Order
+Tickets
 ```
 
 Create Purchase Order flow:
@@ -259,63 +271,30 @@ Tracks workbook:
 
 Only use `supabase/migrations` now:
 
-1. `001_reset_rebuild_inventory_schema.sql`
-2. `002_import_inventory_inflow_new.sql`
-3. `003_disable_inventory_rls_for_app.sql`
-4. `004_import_supporting_workbooks.sql`
-5. `005_profiles_suppliers_support.sql`
-6. `006_fix_profile_optional_fields_and_rls.sql`
-7. `007_order_statuses_and_supplier_rls_repair.sql`
-8. `008_order_executor_assignment.sql`
-9. `009_refresh_recipe_catalog.sql`
-10. `010_import_track_recipes.sql`
-11. `011_rrp_catalog.sql`
-12. `012_security_hardening.sql`
-13. `013_product_codes.sql`
-14. `014_order_invoice_details.sql`
-15. `015_rrp_catalog_all_blinds.sql`
-16. `016_repair_torrent_inventory_link_and_delete_cleanup.sql`
-17. `017_order_decimal_quantities_and_rollback_dedupe.sql`
-18. `018_cleanup_failed_order_headers.sql`
-19. `019_execute_order_rpc_and_executor_wastage_update.sql`
-20. `020_order_item_input_measurements.sql`
-21. `021_import_vertical_blinds_stock.sql`
-22. `022_refresh_vertical_blinds_stock_rates.sql`
-23. `023_order_tickets.sql`
-24. `024_order_tickets_all_roles.sql`
-25. `025_order_ticket_inquiry_followups.sql`
-26. `026_sales_order_read_access.sql`
-27. `027_sales_order_update_access.sql`
-28. `028_employee_profile_read_access.sql`
-29. `029_ticket_sequential_numbering.sql`
-30. `030_sales_order_item_edit_access.sql`
-31. `031_ticket_inquiry_date_default.sql`
-32. `032_ticket_plain_sequential_uid.sql`
-33. `033_order_quote_forms_and_downloads.sql`
-34. `034_stock_orders_and_downloads.sql`
-35. `035_clean_app_data_framework.sql`
+1. `001_new_project_empty_schema.sql`
+2. Create the first Auth user in Supabase Dashboard.
+3. `002_link_first_admin_profile.sql`
+4. Continue through the remaining numbered files, currently through `015_mechanism_part_links_anon_permissions.sql`
 
-Do not resurrect deleted historical migrations.
+The older import, cleanup, RRP, component, stock-refresh, and historical patch migrations were removed from the active lane. Do not resurrect them unless the owner explicitly asks to restore legacy data.
 
 Do not add a Supabase service-role key to browser code. Admin Auth user creation, deletion, email edits, and password resets must go through a server-side function such as `supabase/functions/admin-users`.
 
-For database work in this isolated clone, do not use `supabase db query --linked` unless the CLI has been explicitly linked to `knawjdrsdqgyfzqzddix`. Use the new project's direct Postgres connection string with `--db-url $env:VISTA_NEW_DB_URL`, and verify it does not contain the old live project ref `akjybtvaezxayfwtpifd`.
+For database work in this isolated clone, the CLI is linked to `knawjdrsdqgyfzqzddix`, but direct DB commands currently hang without the remote DB URL/password. Prefer Supabase SQL Editor or use the new project's direct Postgres connection string with `--db-url $env:VISTA_NEW_DB_URL`; verify it does not contain the old live project ref `akjybtvaezxayfwtpifd`.
 
-Executer production depends on `public.execute_order(...)` from migration 19. Do not replace it with browser-side inventory deduction; the browser should save cut inputs, then the RPC should deduct inventory and mark rows executed/deducted.
+Executer production depends on `public.execute_order(...)`, which is part of the clean base schema. Do not replace it with browser-side inventory deduction; the browser should save cut inputs, then the RPC should deduct inventory and mark rows executed/deducted.
 
-For order measurements, preserve canonical values (`width_cm`, `height_cm`, track chargeable feet in `area_sqm`) for backward compatibility. Optional input columns from migration 20 are display aids; old orders must still render converted units from canonical values.
+For order measurements, preserve canonical values (`width_cm`, `height_cm`, track chargeable feet in `area_sqm`) for backward compatibility. Optional input columns are display aids; old orders must still render converted units from canonical values.
 
 Billing PDFs must stay derived from persisted `order_items` on `order-detail.html`. Do not add a new billing table just to group repeated blinds; use the saved dimensions/rates so old orders and new orders follow the same output. Blinds bill by total SQM, tracks bill by track count while showing saved chargeable length as reference, and parts are unit-based. Use neutral invoice terms such as item, quantity, measure, bill quantity, rate, and amount; the footer should show only the grand total amount.
 
 Quote/proforma output metadata belongs in `order_quote_forms` and generated snapshots belong in `order_quote_downloads`. These tables are for customer-facing addresses, terms, edited quote rows, and redownload history; do not use them to replace production `order_items` or inventory/component calculations.
 
-Vertical blind stock lives under `Vertical Blind Fabrics`. Use migration 22 or its generator to refresh that stock/rate set; do not rerun broad reset/import migrations just to change vertical rates.
+Vertical blind stock lives under `Vertical Blind Fabrics` only if legacy data is restored. The active new-website migration lane does not import workbook stock.
 
-Migration 35 is the current owner-requested cleanup path for an empty structural framework. Do not run older import migrations after it unless the owner explicitly wants old workbook/catalog data restored. If a full account wipe is requested, use the commented optional block in migration 35 separately and plan how to recreate the first admin user before deleting `auth.users` / `public.profiles`.
+Sales order visibility depends on both frontend filters and RLS. Do not re-add sales-side `customer_id = currentProfile.id` filters on `orders.html`, order detail, or sales-side assignment surfaces. In the current clean lane, shared order visibility/editing is handled by the newer role/approval workflow and app-session permissions; keep sales/management shared workflow access unless the owner asks for a role-by-role lockdown.
 
-Sales order visibility depends on both frontend filters and RLS. Do not re-add sales-side `customer_id = currentProfile.id` filters on `orders.html`, order detail, or sales-side assignment surfaces. Migration 26 adds `can_view_order` so sales users can read all order rows and detail rows. Migration 27 lets sales maintain shared order flow fields while delete remains admin-only. Migration 30 lets sales edit order line items/components on shared open orders; do not make the order-detail edit button admin-only again.
-
-Tickets should behave like a lightweight CRM work queue: the list row is clickable and opens `ticket-detail.html?id=<ticket_id>`, follow-ups remain append-only history on the ticket detail page, and Create Order stays a conversion action after the follow-up action. Ticket creator, owner, and follow-up author labels depend on profile read access from migration 28; do not display raw UUIDs in the ticket UI. Ticket IDs must be generated by the database trigger and, after migration 32, display as plain sequence numbers such as `0001`, `0002`; do not generate ticket numbers in browser JavaScript. Do not show a ticket inquiry-date field, but keep date creation stable through `order_tickets.inquiry_date` and migration 31.
+Tickets should behave like a lightweight CRM work queue: the list row is clickable and opens `ticket-detail.html?id=<ticket_id>`, follow-ups remain append-only history on the ticket detail page, and quotation generation stays a conversion action after the follow-up action. Ticket creator, owner, and follow-up author labels depend on profile read access; do not display raw UUIDs in the ticket UI. Ticket IDs must be generated by the database trigger and display as plain sequence numbers such as `0001`, `0002`; do not generate ticket numbers in browser JavaScript. Do not show a ticket inquiry-date field, but keep date creation stable through `order_tickets.inquiry_date`.
 
 ## Fast Verification Queries
 

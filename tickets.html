@@ -3,6 +3,12 @@
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tickets - Vista Manufacturing</title>
+  <script>
+    const ticketParams = new URLSearchParams(location.search)
+    if (ticketParams.get('embed') === '1') {
+      document.documentElement.classList.add('embed-mode')
+    }
+  </script>
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
@@ -16,21 +22,13 @@
       <div class="page-header workspace-hero">
         <div>
           <h1>Tickets</h1>
-          <p>Capture customer requirements before the order is confirmed, then convert the ticket into a full order.</p>
-        </div>
-      </div>
-
-      <div class="section-intro">
-        <div class="section-intro-icon accent-ticket"><i class="fa-solid fa-ticket"></i></div>
-        <div>
-          <h2>Customer Requirements</h2>
-          <p>Create a ticket first when the customer is still discussing measurements, product choices, budget, or timing.</p>
+          <p>Review customer requirement tickets, follow-ups, and quotation handoffs.</p>
         </div>
       </div>
 
       <div id="ticket-alert" class="alert alert-error"></div>
 
-      <div class="card" style="margin-bottom:16px;">
+      <div class="card" id="ticket-create-card" style="margin-bottom:16px;">
         <div class="card-header">
           <div>
             <h2>New Ticket</h2>
@@ -60,13 +58,13 @@
           </label>
 
           <div class="form-row cols-3" style="margin-bottom:12px;">
-            <div class="form-group"><label>Inquiry For *</label><input id="ticket-inquiry-for" placeholder="Blinds for bedroom"></div>
+            <div class="form-group"><label>Inquiry For</label><input id="ticket-inquiry-for" placeholder="Blinds for bedroom"></div>
             <div class="form-group"><label>Location</label><input id="ticket-location" placeholder="Area, city, site"></div>
             <div class="form-group"><label>First Follow-up</label><input id="ticket-follow-up" type="date"></div>
           </div>
 
           <div class="form-group">
-            <label>Remarks *</label>
+            <label>Remarks</label>
             <textarea id="ticket-notes" rows="4" placeholder="Requirement details, next action, samples, budget, urgency..."></textarea>
           </div>
 
@@ -79,7 +77,7 @@
         </div>
       </div>
 
-      <div class="card">
+      <div class="card" id="ticket-queue-card">
         <div class="card-header" style="gap:12px;flex-wrap:wrap;">
           <div>
             <h2>Open Tickets</h2>
@@ -88,10 +86,7 @@
           <div style="display:flex;gap:8px;">
             <select id="ticket-status-filter" class="filter-select" onchange="renderTickets()">
               <option value="active">Active</option>
-              <option value="open">Open</option>
-              <option value="followup">Followup</option>
-              <option value="order_confirmed">Order Confirmed</option>
-              <option value="converted">Converted</option>
+              <option value="confirmed">Quotation</option>
               <option value="cancelled">Cancelled</option>
               <option value="">All</option>
             </select>
@@ -136,6 +131,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/auth.js"></script>
+<script src="js/test-mode.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/customer-source.js"></script>
 <script src="js/transitions.js"></script>

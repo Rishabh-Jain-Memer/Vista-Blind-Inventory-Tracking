@@ -1,4 +1,4 @@
--- First admin profile link for the isolated Vista Blind Supabase project.
+﻿-- First admin profile link for the isolated Vista Blind Supabase project.
 --
 -- Before running this file:
 -- 1. Open Supabase Dashboard > Authentication > Users.
@@ -7,8 +7,8 @@
 
 DO $$
 DECLARE
-  v_email TEXT := 'replace-with-admin-email@example.com';
-  v_full_name TEXT := 'Vista Admin';
+  v_email TEXT := 'rishabhmjain2006@gmail.com';
+  v_full_name TEXT := 'Rishabh Jain';
   v_user_id UUID;
 BEGIN
   SELECT id
