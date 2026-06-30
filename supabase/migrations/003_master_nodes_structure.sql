@@ -3,6 +3,8 @@
 
 BEGIN;
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
+
 CREATE TABLE IF NOT EXISTS public.master_nodes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   parent_id UUID REFERENCES public.master_nodes(id) ON DELETE CASCADE,
@@ -69,6 +71,21 @@ CREATE TABLE IF NOT EXISTS public.master_inventory_sync_items (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   deleted_at TIMESTAMPTZ
 );
+
+ALTER TABLE public.master_nodes
+  ALTER COLUMN id SET DEFAULT gen_random_uuid();
+
+ALTER TABLE public.master_pages
+  ALTER COLUMN id SET DEFAULT gen_random_uuid();
+
+ALTER TABLE public.mechanism_groups
+  ALTER COLUMN id SET DEFAULT gen_random_uuid();
+
+ALTER TABLE public.mechanism_options
+  ALTER COLUMN id SET DEFAULT gen_random_uuid();
+
+ALTER TABLE public.master_inventory_sync_items
+  ALTER COLUMN id SET DEFAULT gen_random_uuid();
 
 ALTER TABLE public.master_nodes
   ADD COLUMN IF NOT EXISTS exclude_from_pnc_name BOOLEAN NOT NULL DEFAULT FALSE,

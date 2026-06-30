@@ -105,6 +105,8 @@ Create Sales Order now also reads `mechanism_part_links` through the RRP/master 
 
 `mechanism_part_links` stores architecture only: selected mechanism option, linked inventory variant, quantity rule, quantity per unit, wastage percent, unit, and notes. It does not create stock, deduct stock, or write inventory movement rows.
 
+If any Masters create/edit/sync action reports a null `id` insert failure, check whether `supabase/migrations/016_repair_generated_uuid_defaults.sql` has been run in SQL Editor. `js/masters.js` now sends explicit UUIDs for its own inserts, but 016 still repairs missing UUID defaults on public UUID `id` columns for older or indirect writes.
+
 ## Profiles Page
 
 `settings.html` is the historical route, but the UI label is Profiles.

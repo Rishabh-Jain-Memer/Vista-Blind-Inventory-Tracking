@@ -145,6 +145,15 @@ function setPreferredUnit(unit) {
   localStorage.setItem('vista_unit', unit)
 }
 
+function appUuid() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID()
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, ch => {
+    const value = Math.random() * 16 | 0
+    const digit = ch === 'x' ? value : ((value & 0x3) | 0x8)
+    return digit.toString(16)
+  })
+}
+
 // ── Activity Logging ─────────────────────────────────────────────────────────
 // Writes a row to activity_logs. Non-blocking — errors are silently swallowed
 // so they never break the main operation.
@@ -154,6 +163,7 @@ async function logActivity(actionType, entityType, entityId, entityLabel, change
     const profileName = profile?.full_name || profile?.username || null
 
     let payload = {
+      id:           appUuid(),
       user_id:      profile?.id || null,
       user_name:    profileName,
       action_type:  actionType,

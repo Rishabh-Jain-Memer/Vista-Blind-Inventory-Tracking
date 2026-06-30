@@ -42,6 +42,20 @@ function cleanMasterName(value) {
   return String(value || '').trim().replace(/\s+/g, ' ')
 }
 
+function masterUuid() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID()
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, ch => {
+    const value = Math.random() * 16 | 0
+    const digit = ch === 'x' ? value : ((value & 0x3) | 0x8)
+    return digit.toString(16)
+  })
+}
+
+function dbReturnedRow(data, fallback) {
+  if (Array.isArray(data)) return data[0] || fallback
+  return data || fallback
+}
+
 function parseMasterNames(primaryValue, bulkValue = '') {
   const rawParts = [
     primaryValue,
@@ -506,12 +520,14 @@ async function saveUnassignedAsPage() {
     const nextSort = masterPages.length
       ? Math.max(...masterPages.map(page => Number(page.sort_order || 0))) + 10
       : 10
-    const { data: page, error: pageError } = await db
+    const pagePayload = { id: masterUuid(), name, normalized_name: normalized, sort_order: nextSort }
+    const { data: pageData, error: pageError } = await db
       .from('master_pages')
-      .insert({ name, normalized_name: normalized, sort_order: nextSort })
+      .insert(pagePayload)
       .select('id')
       .single()
     if (pageError) throw pageError
+    const page = dbReturnedRow(pageData, pagePayload)
 
     const { error: rootError } = await db
       .from('master_nodes')
@@ -857,7 +873,7 @@ async function saveMechanismPartLink(optionId) {
   disable('mechanism-part-save')
   try {
     payload.sort_order = partsForMechanismOption(optionId).length
-    const { error } = await db.from('mechanism_part_links').insert(payload)
+    const { error } = await db.from('mechanism_part_links').insert({ id: masterUuid(), ...payload })
     if (error) throw error
     await logActivity('create', 'mechanism_part_link', optionId, payload.part_name, payload)
     toast('Mechanism part linked')
@@ -1111,13 +1127,14 @@ async function saveMasterPage(pageId = '') {
       const nextSort = masterPages.length
         ? Math.max(...masterPages.map(page => Number(page.sort_order || 0))) + 10
         : 10
+      const payload = { id: masterUuid(), name, normalized_name: normalized, sort_order: nextSort }
       const { data, error } = await db
         .from('master_pages')
-        .insert({ name, normalized_name: normalized, sort_order: nextSort })
+        .insert(payload)
         .select('id')
         .single()
       if (error) throw error
-      activeMasterPageId = data.id
+      activeMasterPageId = dbReturnedRow(data, payload).id
     }
 
     saveMasterPageState()
@@ -1292,13 +1309,15 @@ async function saveMechanismGroup(groupId = null) {
       const nextSort = mechanismGroups.length
         ? Math.max(...mechanismGroups.map(group => Number(group.sort_order || 0))) + 1
         : 0
+      const payload = { id: masterUuid(), name, normalized_name: normalized, description, sort_order: nextSort }
       const { data, error } = await db
         .from('mechanism_groups')
-        .insert({ name, normalized_name: normalized, description, sort_order: nextSort })
+        .insert(payload)
         .select('id, name')
         .single()
       if (error) throw error
-      await logActivity('create', 'mechanism_group', data.id, data.name, { description })
+      const row = dbReturnedRow(data, payload)
+      await logActivity('create', 'mechanism_group', row.id, row.name, { description })
       toast('Mechanism group created')
     }
     closeModal()
@@ -1393,20 +1412,23 @@ async function saveMechanismOption(groupId, optionId = null) {
       const nextSort = siblings.length
         ? Math.max(...siblings.map(option => Number(option.sort_order || 0))) + 1
         : 0
+      const payload = {
+        id: masterUuid(),
+        group_id: groupId,
+        name,
+        normalized_name: normalized,
+        source_label: sourceLabel,
+        price_key: priceKey,
+        sort_order: nextSort,
+      }
       const { data, error } = await db
         .from('mechanism_options')
-        .insert({
-          group_id: groupId,
-          name,
-          normalized_name: normalized,
-          source_label: sourceLabel,
-          price_key: priceKey,
-          sort_order: nextSort,
-        })
+        .insert(payload)
         .select('id, name')
         .single()
       if (error) throw error
-      await logActivity('create', 'mechanism_option', data.id, data.name, { group_id: groupId, source_label: sourceLabel, price_key: priceKey })
+      const row = dbReturnedRow(data, payload)
+      await logActivity('create', 'mechanism_option', row.id, row.name, { group_id: groupId, source_label: sourceLabel, price_key: priceKey })
       toast('Mechanism option created')
     }
     closeModal()
@@ -1593,32 +1615,45 @@ async function ensureInventoryCategory(name) {
   if (existing.error) throw existing.error
   if (existing.data) return existing.data
 
+  const payload = {
+    id: masterUuid(),
+    name,
+    normalized_name: normalized,
+    sub_group: MASTER_INVENTORY_SUB_GROUP,
+  }
   const { data, error } = await db
     .from('inv_categories')
-    .insert({
-      name,
-      normalized_name: normalized,
-      sub_group: MASTER_INVENTORY_SUB_GROUP,
-    })
+    .insert(payload)
     .select('id, name, normalized_name, sub_group')
     .single()
   if (error) throw error
-  return data
+  return dbReturnedRow(data, payload)
 }
 
 async function ensureInventoryProduct(categoryId, name) {
   const normalized = normMasterName(name)
+  const existing = await db
+    .from('inv_products')
+    .select('id, name, normalized_name')
+    .eq('category_id', categoryId)
+    .eq('normalized_name', normalized)
+    .maybeSingle()
+  if (existing.error) throw existing.error
+  if (existing.data) return existing.data
+
+  const payload = {
+    id: masterUuid(),
+    category_id: categoryId,
+    name,
+    normalized_name: normalized,
+  }
   const { data, error } = await db
     .from('inv_products')
-    .upsert({
-      category_id: categoryId,
-      name,
-      normalized_name: normalized,
-    }, { onConflict: 'category_id,normalized_name' })
+    .insert(payload)
     .select('id, name, normalized_name')
     .single()
   if (error) throw error
-  return data
+  return dbReturnedRow(data, payload)
 }
 
 async function ensureInventoryVariant(productId, name) {
@@ -1632,18 +1667,20 @@ async function ensureInventoryVariant(productId, name) {
   if (existing.error) throw existing.error
   if (existing.data) return { row: existing.data, created: false }
 
+  const payload = {
+    id: masterUuid(),
+    product_id: productId,
+    name,
+    normalized_name: normalized,
+    unit: MASTER_INVENTORY_UNIT,
+  }
   const { data, error } = await db
     .from('inv_variants')
-    .insert({
-      product_id: productId,
-      name,
-      normalized_name: normalized,
-      unit: MASTER_INVENTORY_UNIT,
-    })
+    .insert(payload)
     .select('id, name, normalized_name')
     .single()
   if (error) throw error
-  return { row: data, created: true }
+  return { row: dbReturnedRow(data, payload), created: true }
 }
 
 async function loadActiveMasterSyncItems() {
@@ -1683,7 +1720,7 @@ async function upsertMasterSyncItem(item, variantId) {
     const { error } = await db.from('master_inventory_sync_items').update(payload).eq('id', existing.data.id)
     if (error) throw error
   } else {
-    const { error } = await db.from('master_inventory_sync_items').insert(payload)
+    const { error } = await db.from('master_inventory_sync_items').insert({ id: masterUuid(), ...payload })
     if (error) throw error
   }
 }
@@ -1806,6 +1843,7 @@ async function syncMastersToInventory() {
       let category = categoryCache.get(catKey)
       if (!category) {
         category = await ensureInventoryCategory(item.categoryName)
+        if (!category?.id) throw new Error(`Could not prepare inventory category for "${item.categoryName}". Refresh and try again.`)
         categoryCache.set(catKey, category)
       }
 
@@ -1813,10 +1851,12 @@ async function syncMastersToInventory() {
       let product = productCache.get(productKey)
       if (!product) {
         product = await ensureInventoryProduct(category.id, item.productName)
+        if (!product?.id) throw new Error(`Could not prepare inventory product for "${item.productName}". Refresh and try again.`)
         productCache.set(productKey, product)
       }
 
       const result = await ensureInventoryVariant(product.id, item.variantName)
+      if (!result?.row?.id) throw new Error(`Could not prepare inventory variant for "${item.variantName}". Refresh and try again.`)
       await upsertMasterSyncItem(item, result.row.id)
       if (result.created) created += 1
       else existing += 1
@@ -1976,20 +2016,22 @@ async function ensureMasterNode(parentId, name, pageId = null) {
   const nextSort = siblings.length
     ? Math.max(...siblings.map(node => Number(node.sort_order || 0))) + 1
     : 0
+  const payload = {
+    id: masterUuid(),
+    parent_id: parentId,
+    page_id: parentId ? null : pageId,
+    name,
+    normalized_name: normalized,
+    exclude_from_pnc_name: false,
+    sort_order: nextSort,
+  }
   const { data, error } = await db
     .from('master_nodes')
-    .insert({
-      parent_id: parentId,
-      page_id: parentId ? null : pageId,
-      name,
-      normalized_name: normalized,
-      exclude_from_pnc_name: false,
-      sort_order: nextSort,
-    })
+    .insert(payload)
     .select('id, parent_id, page_id, name, normalized_name, exclude_from_pnc_name, sort_order, created_at')
     .single()
   if (error) throw error
-  return data
+  return dbReturnedRow(data, payload)
 }
 
 initMasters()

@@ -11,7 +11,7 @@ Last updated: 2026-06-28.
 - `supabase db query --linked`, `supabase migration list --linked`, and `supabase db push --linked --dry-run` currently hang without a remote Postgres password/URL. `VISTA_NEW_DB_URL` and `SUPABASE_ACCESS_TOKEN` were not set on 2026-06-28.
 - `supabase status` currently fails because local Docker containers are not running/available; this is local Docker status, not remote project health.
 - The older browser dev-environment/staging switch has been removed from this clone; browser pages now always use the isolated New Supabase project configured in `js/config.js`.
-- The new-project SQL lane now lives only in `supabase/migrations/`: run `001_new_project_empty_schema.sql`, create the first Auth user in Supabase Dashboard, run `002_link_first_admin_profile.sql`, then continue through the current numbered migrations in order.
+- The new-project SQL lane now lives only in `supabase/migrations/`: run `001_new_project_empty_schema.sql`, create the first Auth user in Supabase Dashboard, run `002_link_first_admin_profile.sql`, then continue through the current numbered migrations in order, currently through `016_repair_generated_uuid_defaults.sql`.
 - `010_import_vista_inflow_rishi_masters.sql` imports structure-only masters from `Excel File/Vista-Inflow Data to Rishi.xlsx`. It deduplicates repeated RM/FG/inventory rows into Fabrics, Parts, Tracks, and Motors master pages without importing quantities, rolls, rates, movements, or RRP values.
 
 ## New Project Data Wiped On 2026-06-24
@@ -82,6 +82,7 @@ Removed from the working tree:
 - Mechanisms are now separate from the master tree. `mechanism_groups`, `mechanism_options`, and `master_mechanism_groups` store feature dimensions such as headrail, cassette, mono mechanism, and laddertape mechanism, plus dropdown assignments to selected masters.
 - Mechanism options can now link to inventory-backed parts through `mechanism_part_links`. Each part link stores the inventory variant, quantity rule, quantity per unit, wastage percentage, unit, and notes. Create Order uses those links to create planned `order_components` for the selected mechanism.
 - `014_mechanism_part_links.sql` must be followed by `015_mechanism_part_links_anon_permissions.sql` because the browser app uses the anon key with app-level sessions. Without 015, Masters shows `permission denied for table mechanism_part_links`.
+- `016_repair_generated_uuid_defaults.sql` repairs missing UUID primary-key defaults on every public UUID `id` column, including master, mechanism, inventory, activity log, mechanism part-link, and RRP tables. Run it if Masters actions fail with a null `id` insert error after a partial/older SQL run.
 - `003_master_nodes_structure.sql` seeds first-pass master categories from `Excel File/Vista Dealer RRP April 2026.xlsx`, mechanism labels from the RRP/inflow workbooks, and color/code sub masters from `Excel File/Vista Inventory Inflow New.xlsx`.
 - Color/code values are nested under a skipped `Color` label for each fabric family, so final generated names include the actual color/code but not the word `Color`.
 - The seed imports structure labels only, not stock quantities, purchase rates, rolls, or movements.
@@ -158,7 +159,7 @@ Run the current numbered SQL lane for this new website clone:
 1. `supabase/migrations/001_new_project_empty_schema.sql`
 2. Create the first Auth user in Supabase Dashboard.
 3. `supabase/migrations/002_link_first_admin_profile.sql`
-4. Continue through the remaining numbered migration files in order, currently through `015_mechanism_part_links_anon_permissions.sql`.
+4. Continue through the remaining numbered migration files in order, currently through `016_repair_generated_uuid_defaults.sql`.
 
 The previous numbered import and cleanup migration notes are historical and their SQL files were removed from the active migration folder.
 

@@ -27,6 +27,7 @@ function renderAdminTestMode() {
   }
   const enabled = Boolean(window.VISTA_TEST_MODE?.isEnabled?.())
   const active = Boolean(window.VISTA_TEST_MODE?.isActive?.())
+  const wrapError = window.VISTA_TEST_MODE?.wrapError?.() || ''
   const btn = document.getElementById('test-mode-toggle-btn')
   const status = document.getElementById('test-mode-status')
   if (btn) {
@@ -38,7 +39,7 @@ function renderAdminTestMode() {
   if (status) {
     status.className = `test-mode-status ${enabled ? 'is-active' : 'is-ready'}`
     status.textContent = enabled
-      ? (active ? 'Active in this browser. Turning it off clears local test changes and reloads real data.' : 'Enabled, and it will activate after your admin session is confirmed.')
+      ? (active ? 'Active in this browser. Turning it off clears local test changes and reloads real data.' : `Enabled, but not protecting writes yet. ${wrapError || 'Refresh after admin session is confirmed.'}`)
       : 'Ready. Actions currently write to the isolated Supabase project.'
   }
 }

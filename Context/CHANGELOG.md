@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-06-28 - Masters Null Id Repair Migration
+
+- Added `016_repair_generated_uuid_defaults.sql` to repair missing `DEFAULT gen_random_uuid()` values on every public UUID `id` column, including master, mechanism, inventory, activity log, mechanism part-link, and RRP tables.
+- Hardened `003_master_nodes_structure.sql` so rerunning it also repairs UUID defaults on the tables it owns.
+- Hardened `js/masters.js` so Masters, Mechanisms, Mechanism Part Links, and Sync Inventory send explicit UUIDs on inserts instead of depending on database defaults.
+- Replaced Sync Inventory's product upsert with select-then-insert so it cannot overwrite an existing product ID during conflict handling.
+- Hardened Admin Test Mode inserts so local sandbox rows use UUID-shaped IDs and an explicit null `id` cannot override the generated sandbox ID.
+- Bumped the Admin Test Mode sandbox storage key to ignore stale local rows created before the UUID fix.
+- Added cache-busting script versions on `masters.html` so the browser loads the patched Masters/Test Mode/Utils code immediately.
+- Updated migration docs so SQL Editor runs continue through 016 when Masters actions show a null `id` insert error.
+
 ## 2026-06-28 - UI Polish And Dev Environment Cleanup
 
 - Removed the browser-facing dev-environment/staging switch now that this clone already uses the isolated New Supabase project.

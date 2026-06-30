@@ -20,6 +20,7 @@ Run these files manually in Supabase SQL Editor in order:
 14. `013_rrp_rule_engine.sql`
 15. `014_mechanism_part_links.sql`
 16. `015_mechanism_part_links_anon_permissions.sql`
+17. `016_repair_generated_uuid_defaults.sql`
 
 CLI note: `supabase projects list` shows this checkout linked to `knawjdrsdqgyfzqzddix`, but direct DB commands currently hang without a remote DB URL/password. See `Context/SUPABASE_STATUS.md`. Until `VISTA_NEW_DB_URL` or the remote DB password is available, SQL Editor is the reliable path for applying migrations.
 
@@ -62,5 +63,7 @@ No stock quantities, purchase rates, rolls, or movements are imported by this fi
 `014_mechanism_part_links.sql` adds `mechanism_part_links`, which lets each mechanism option link to inventory variants with scalable quantity rules (`fixed`, `per_blind`, `per_width_m`, `per_height_m`, and `per_area_sqm`). Create Order reads these links to plan `order_components` and include linked parts in order cost.
 
 `015_mechanism_part_links_anon_permissions.sql` repairs browser permissions for `mechanism_part_links` after 014. The app-level login runs over the anon key, so this table needs anon grants and anon RLS policies, matching migration 012's master/mechanism table permissions.
+
+`016_repair_generated_uuid_defaults.sql` repairs generated UUID defaults on every public UUID `id` column, including master, mechanism, inventory, activity log, mechanism-part-link, and RRP tables. Run it if Masters actions fail with a null `id` insert error after a partial/older SQL run.
 
 The older import, cleanup, RRP, component, stock-refresh, and historical patch migrations were removed from this clone's active migration lane. Do not run old migrations into this new website database unless the owner explicitly asks to restore legacy data.

@@ -128,6 +128,7 @@ supabase/migrations/012_master_page_app_session_permissions.sql
 supabase/migrations/013_rrp_rule_engine.sql
 supabase/migrations/014_mechanism_part_links.sql
 supabase/migrations/015_mechanism_part_links_anon_permissions.sql
+supabase/migrations/016_repair_generated_uuid_defaults.sql
 ```
 
 The old import, cleanup, RRP, component, stock-refresh, and historical patch migrations were removed from the active migration folder.
@@ -232,7 +233,7 @@ Run order:
 1. `001_new_project_empty_schema.sql`
 2. Create the first Auth user in Supabase Dashboard.
 3. `002_link_first_admin_profile.sql`
-4. Continue through the remaining numbered files in order, currently through `015_mechanism_part_links_anon_permissions.sql`.
+4. Continue through the remaining numbered files in order, currently through `016_repair_generated_uuid_defaults.sql`.
 
 Do not recreate or run the deleted legacy migration chain unless the owner explicitly asks to restore legacy data.
 

@@ -51,6 +51,25 @@ Changes made after the earlier RRP/profile handoff:
 
 Important fix: after 014 was run manually, the UI showed `permission denied for table mechanism_part_links`. Root cause was that 014 only granted `authenticated`, but this app uses the anon key with app-level sessions. 015 repairs that.
 
+Important fix: if Masters actions show a null `id` insert error, run `supabase/migrations/016_repair_generated_uuid_defaults.sql` in Supabase SQL Editor. It repairs missing `DEFAULT gen_random_uuid()` values on every public UUID `id` column, including master, mechanism, inventory, activity log, mechanism part-link, and RRP tables after partial/older SQL runs.
+
+Masters writes were hardened to send explicit UUIDs on inserts, including Sync Inventory catalog/sync rows and mechanism part links. Sync Inventory now uses select-then-insert for products instead of upsert so it cannot overwrite an existing product ID during conflict handling.
+
+Admin Test Mode was also hardened so locally captured inserts use UUID-shaped IDs, an explicit null `id` cannot override the generated sandbox ID, and the old local sandbox key is ignored after the fix.
+
+Latest Test Mode fix on 2026-06-29:
+- User enabled Admin Test Mode, added `A` under `Roller Blind > Blackout`, then turned Test Mode off, but `A` remained.
+- Direct Supabase check confirmed `A` had been written to real `master_nodes`, so the sandbox wrapper was not protecting that Masters write.
+- Deleted the accidental real row `Roller Blind > Blackout > A` from Supabase.
+- Hardened `js/test-mode.js`:
+  - wrapper now sets `window.VISTA_TEST_MODE_READY = true` only after `db` is actually wrapped
+  - wrapper errors are captured in `window.VISTA_TEST_MODE_ERROR`
+  - `isActive()` now requires enabled + admin session + wrapped client
+  - active local update/delete filters no longer require forwarding to a real Supabase write builder
+- Updated visible Test Mode status in `js/settings.js` and `js/account-settings.js` to warn if Test Mode is enabled but not actually protecting writes.
+- Cache-busted `js/config.js`, `js/auth.js`, and `js/test-mode.js` across app HTML pages with `v=20260629-testmode-1`.
+- Important: after this fix, hard refresh before retesting Test Mode.
+
 ## High-Level Product Direction
 
 - This is now being rebuilt around a scalable master structure, not the old product-code/inventory model.
@@ -293,6 +312,7 @@ Current migration files in the New clone include the clean new sequence:
 13. `013_rrp_rule_engine.sql`
 14. `014_mechanism_part_links.sql`
 15. `015_mechanism_part_links_anon_permissions.sql`
+16. `016_repair_generated_uuid_defaults.sql`
 
 Important notes:
 - Some older migration files were deleted from this clone.

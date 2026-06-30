@@ -62,3 +62,11 @@ After running `014_mechanism_part_links.sql`, also run `015_mechanism_part_links
 ```text
 permission denied for table mechanism_part_links
 ```
+
+If Masters actions show a null `id` insert error, run:
+
+```text
+supabase/migrations/016_repair_generated_uuid_defaults.sql
+```
+
+This repairs missing `DEFAULT gen_random_uuid()` values on every public UUID `id` column, including master, mechanism, inventory, activity log, mechanism part-link, and RRP tables after partial/older SQL runs.

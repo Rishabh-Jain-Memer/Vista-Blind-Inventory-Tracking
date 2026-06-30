@@ -7,7 +7,8 @@
 
 const VISTA_TEST_MODE = (() => {
   const ENABLED_KEY = 'vista.testMode.enabled'
-  const STATE_KEY = 'vista.testMode.state.v1'
+  const STATE_KEY = 'vista.testMode.state.v2'
+  const LEGACY_STATE_KEYS = ['vista.testMode.state.v1']
   const SAFE_RPC = new Set(['app_login', 'app_logout', 'app_profile_for_token'])
 
   function storageGet(key) {
@@ -31,7 +32,15 @@ const VISTA_TEST_MODE = (() => {
   }
 
   function isActive() {
-    return isEnabled() && isAdminSession()
+    return isEnabled() && isAdminSession() && isWrapped()
+  }
+
+  function isWrapped() {
+    return window.VISTA_TEST_MODE_READY === true
+  }
+
+  function wrapError() {
+    return window.VISTA_TEST_MODE_ERROR || ''
   }
 
   function readState() {
@@ -52,9 +61,11 @@ const VISTA_TEST_MODE = (() => {
   }
 
   function fakeUuid(state) {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID()
     const n = Number(state.seq || 1)
     state.seq = n + 1
-    return `test-${Date.now().toString(36)}-${n.toString(36)}`
+    const suffix = n.toString(16).padStart(12, '0').slice(-12)
+    return `00000000-0000-4000-8000-${suffix}`
   }
 
   function clone(value) {
@@ -103,6 +114,13 @@ const VISTA_TEST_MODE = (() => {
       this.returning = false
     }
 
+    forward(method, ...args) {
+      if (this.baseBuilder && typeof this.baseBuilder[method] === 'function') {
+        this.baseBuilder = this.baseBuilder[method](...args)
+      }
+      return this
+    }
+
     select(columns, options) {
       if (this.op === 'select') this.baseBuilder = this.baseBuilder.select(columns, options)
       this.returning = true
@@ -139,96 +157,79 @@ const VISTA_TEST_MODE = (() => {
 
     eq(column, value) {
       this.filters.push({ type: 'eq', column, value })
-      this.baseBuilder = this.baseBuilder.eq(column, value)
-      return this
+      return this.forward('eq', column, value)
     }
 
     neq(column, value) {
-      this.baseBuilder = this.baseBuilder.neq(column, value)
-      return this
+      return this.forward('neq', column, value)
     }
 
     gt(column, value) {
-      this.baseBuilder = this.baseBuilder.gt(column, value)
-      return this
+      return this.forward('gt', column, value)
     }
 
     gte(column, value) {
-      this.baseBuilder = this.baseBuilder.gte(column, value)
-      return this
+      return this.forward('gte', column, value)
     }
 
     lt(column, value) {
-      this.baseBuilder = this.baseBuilder.lt(column, value)
-      return this
+      return this.forward('lt', column, value)
     }
 
     lte(column, value) {
-      this.baseBuilder = this.baseBuilder.lte(column, value)
-      return this
+      return this.forward('lte', column, value)
     }
 
     like(column, pattern) {
-      this.baseBuilder = this.baseBuilder.like(column, pattern)
-      return this
+      return this.forward('like', column, pattern)
     }
 
     ilike(column, pattern) {
-      this.baseBuilder = this.baseBuilder.ilike(column, pattern)
-      return this
+      return this.forward('ilike', column, pattern)
     }
 
     not(column, operator, value) {
-      this.baseBuilder = this.baseBuilder.not(column, operator, value)
-      return this
+      return this.forward('not', column, operator, value)
     }
 
     or(filters, options) {
-      this.baseBuilder = this.baseBuilder.or(filters, options)
-      return this
+      return this.forward('or', filters, options)
     }
 
     in(column, values) {
       this.filters.push({ type: 'in', column, values })
-      this.baseBuilder = this.baseBuilder.in(column, values)
-      return this
+      return this.forward('in', column, values)
     }
 
     is(column, value) {
       this.filters.push({ type: 'is', column, value })
-      this.baseBuilder = this.baseBuilder.is(column, value)
-      return this
+      return this.forward('is', column, value)
     }
 
     order(column, options) {
-      this.baseBuilder = this.baseBuilder.order(column, options)
-      return this
+      return this.forward('order', column, options)
     }
 
     limit(count) {
-      this.baseBuilder = this.baseBuilder.limit(count)
-      return this
+      return this.forward('limit', count)
     }
 
     range(from, to) {
-      this.baseBuilder = this.baseBuilder.range(from, to)
-      return this
+      return this.forward('range', from, to)
     }
 
     match(query) {
-      this.baseBuilder = this.baseBuilder.match(query)
+      this.forward('match', query)
       Object.entries(query || {}).forEach(([column, value]) => this.filters.push({ type: 'eq', column, value }))
       return this
     }
 
     contains(column, value) {
-      this.baseBuilder = this.baseBuilder.contains(column, value)
-      return this
+      return this.forward('contains', column, value)
     }
 
     overlaps(column, value) {
-      this.baseBuilder = this.baseBuilder.overlaps(column, value)
-      return this
+      return this.forward('overlaps', column, value)
     }
 
     catch(reject) {
@@ -261,9 +262,9 @@ const VISTA_TEST_MODE = (() => {
 
       if (this.op === 'insert' || this.op === 'upsert') {
         const rows = (Array.isArray(this.payload) ? this.payload : [this.payload]).map(row => ({
+          ...clone(row),
           id: row?.id || fakeUuid(state),
           created_at: row?.created_at || new Date().toISOString(),
-          ...clone(row),
         }))
         for (const row of rows) {
           const existingIdx = table.inserted.findIndex(item => item.id === row.id)
@@ -330,6 +331,7 @@ const VISTA_TEST_MODE = (() => {
     else {
       storageRemove(ENABLED_KEY)
       storageRemove(STATE_KEY)
+      LEGACY_STATE_KEYS.forEach(storageRemove)
     }
   }
 
@@ -361,6 +363,8 @@ const VISTA_TEST_MODE = (() => {
   return {
     isEnabled,
     isActive,
+    isWrapped,
+    wrapError,
     setEnabled,
     wrapClient,
     renderBadge,
@@ -368,7 +372,15 @@ const VISTA_TEST_MODE = (() => {
 })()
 
 window.VISTA_TEST_MODE = VISTA_TEST_MODE
-db = VISTA_TEST_MODE.wrapClient(db)
+try {
+  db = VISTA_TEST_MODE.wrapClient(db)
+  window.VISTA_TEST_MODE_READY = true
+  window.VISTA_TEST_MODE_ERROR = ''
+} catch (err) {
+  window.VISTA_TEST_MODE_READY = false
+  window.VISTA_TEST_MODE_ERROR = err?.message || String(err)
+  console.error('Admin test mode could not wrap Supabase client:', err)
+}
 document.addEventListener('DOMContentLoaded', () => {
   VISTA_TEST_MODE.renderBadge()
   let checks = 0
